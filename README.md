@@ -1,29 +1,11 @@
 # Sandbox for Many-core Engine for Perl
 
-This is a journey taken running with Perl + MCE + Inline::C. To make this
-interesting, the examples count, sum, or generate prime numbers in order.
+This is a journey taken with Perl + MCE + Inline::C. To make this exciting,
+the examples count, sum, or generate prime numbers in order.
 
 The sandbox has the minimum required to run MCE + Inline::C. Both modules are
 pre-installed under the lib directory. ExtUtils::MakeMaker and Time::HiRes,
-possibly missing in Perl 8 and 10, are required for the examples.
-
-Most often, algorithm3 will run out of the box, granted you have a C compiler
-installed, e.g. Xcode/gcc, MS nmake/cc, dmake/gcc, or make/gcc. Some OS
-environments may need to update ExtUtils::MakeMaker for Inline::C to
-function properly, e.g Cygwin.
-
-The primesieve.pl/.c and primeutil.pl examples are complementary additions.
-These have additional dependencies described below. Primesieve.c is small.
-It demonstrates the generation of primes coming from an external C API.
-Primeutil.pl is similar but from a Perl module instead. MCE is not used when
-counting primes with Math::Prime::Util due to optimized for one core. It is
-capable in counting primes many times faster than algorithm3 or primesieve.
-
-This sandbox contains logic for base10 to string conversion including buffered
-IO for very fast printing of primes. Beware, this can fill your disk. Please be
-careful with the --print/-p options. Specify both FROM and NUMBER if printing
-is desired. A later revision of sandbox will have the option to write primes
-to a PDL file in a compact manner (no ETA).
+possibly missing in Perl 8 and 10, are required on the system.
 
 ## Content
 
@@ -51,9 +33,21 @@ to a PDL file in a compact manner (no ETA).
 There is a one time delay when running algorithm3.pl or primesieve.pl. This
 is from Inline::C compiling relevant C files the very first time.
 
+Most often, algorithm3 will run out of the box, granted you have a C compiler
+installed, e.g. Xcode/gcc, MS nmake/cc, dmake/gcc, or make/gcc. Some OS
+environments may need to update ExtUtils::MakeMaker for Inline::C to
+function properly, e.g Cygwin.
+
 I chose not to have many *.c files in order to have Inline::C do less checking
 at startup. Simply remove the .Inline directory after making changes to any
 *.h file before running.
+
+The primesieve.pl/.c and primeutil.pl examples are complementary additions.
+These have additional dependencies described below. Primesieve.c is small.
+It demonstrates the generation of primes coming from an external C API.
+Primeutil.pl is similar but from a Perl module instead. MCE is not used when
+counting primes with Math::Prime::Util due to optimized for one core. It is
+capable in counting primes many times faster than algorithm3 or primesieve.
 
 ## Dependencies
 
@@ -91,6 +85,11 @@ following files. This is not necessary when specifying NUMBER below 2^32.
 The following usage is taken from algorithm3.pl. Both primesieve.pl and
 primeutil.pl have different values for the upper limit. The usage is
 similar otherwise.
+
+The base10 to string conversion and buffered IO logic provides efficient
+printing of primes. Please be careful with the --print/-p options. It can
+quickly fill your disk. A suggestion is specifying both the FROM and NUMBER
+arguments. A later revision will have the option to write to a PDL file.
 
 ```
   NAME
