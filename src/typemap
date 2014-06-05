@@ -1,0 +1,10 @@
+
+unsigned long long	T_UV
+unsigned long		T_UV
+
+u_longlong_t		T_UV
+uLL_t			T_UV
+
+uint64_t		T_UV
+uint32_t		T_UV
+
