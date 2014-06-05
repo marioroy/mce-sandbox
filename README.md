@@ -67,6 +67,18 @@ install depending on your environment.
   5. Math::Prime::Util      (Math-Prime-Util-0.41.tar.gz)
 ```
 
+## Note for 32-bit Perl
+
+The scripts support 64-bit numbers. Uncomment the "use bigint" line in the
+following files. This is not necessary if NUMBER is below 2^32.
+
+```
+  1. bin/algorithm3.pl
+  2. bin/primesieve.pl
+  3. bin/primeutil.pl
+  4. lib/Sandbox.pm
+```
+
 ## Usage
 
 The following usage is taken from algorithm3.pl. Both primesieve.pl and

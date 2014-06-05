@@ -33,7 +33,7 @@ BEGIN {
    }
 }
 
-use bigint;
+## use bigint;
 
 use Getopt::Long qw(:config bundling no_ignore_case no_auto_abbrev);
 use Scalar::Util qw(looks_like_number);
@@ -200,9 +200,8 @@ $factor =
    ($N >= 1e13) ? 13 : ($N >= 1e12) ? 21 : ($N >= 1e11) ? 34 :
    ($N >= 1e10) ? 55 : ($N >= 1e9 ) ? 89 : 144;
 
-$sieve_size  = int(16e7 / $factor * 3);
-$sieve_size -= $sieve_size % 510510;
-$sieve_size  = 510510 if $sieve_size < 510510;
+$sieve_size  = int(16e7 / $factor * 4);
+$sieve_size -= $sieve_size % 2;
 
 $step_size = $sieve_size * int(($N - $F) / $sieve_size / 5e4 + 1);
 

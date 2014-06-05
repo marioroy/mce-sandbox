@@ -6,7 +6,7 @@ use warnings;
 
 our $VERSION = '1.000';
 
-use bigint;
+## use bigint;
 
 use Scalar::Util qw(looks_like_number);
 use Fcntl qw(O_RDONLY);
