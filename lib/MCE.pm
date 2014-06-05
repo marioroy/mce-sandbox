@@ -11,8 +11,8 @@ use warnings;
 
 BEGIN {
    ## Forking is emulated under the Windows enviornment (excluding Cygwin).
-   ## MCE 1.514+ will load the threads modules by default for Windows only.
-   ## Folks may specify use_threads => 0 if threads are not desired.
+   ## MCE 1.514+ will load the threads module by default for Windows only.
+   ## Folks may specify use_threads => 0 if threads is not desired.
    if ($^O eq 'MSWin32' && not defined $threads::VERSION) {
       local $@; local $SIG{__DIE__} = \&_NOOP;
       eval 'use threads';
