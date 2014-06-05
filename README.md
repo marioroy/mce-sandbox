@@ -46,8 +46,7 @@ The primesieve.pl/.c and primeutil.pl examples are complementary additions.
 These have additional dependencies described below. Primesieve.c is small.
 It demonstrates the generation of primes coming from an external C API.
 Primeutil.pl is similar but from a Perl module instead. MCE is not used when
-counting primes with Math::Prime::Util due to optimized for one core. It is
-capable in counting primes many times faster than algorithm3 or primesieve.
+counting primes with Math::Prime::Util due to optimized for one core.
 
 ## Dependencies
 
