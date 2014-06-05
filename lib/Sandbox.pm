@@ -6,7 +6,7 @@ use warnings;
 
 our $VERSION = '1.000';
 
-## use bigint;   ## Uncomment for 32-bit Perl and wanting N beyond 2^32.
+use bigint;
 
 use Scalar::Util qw(looks_like_number);
 use Fcntl qw(O_RDONLY);
