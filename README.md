@@ -1,6 +1,6 @@
-# Sandbox for Many-core Engine for Perl
+# Sandboxing with Perl + MCE + Inline::C
 
-This is a journey taken with Perl + MCE + Inline::C. To make this exciting,
+This is a journey with Perl + MCE + Inline::C. To make this exciting,
 the examples count, sum, or generate prime numbers in order.
 
 The sandbox has the minimum required to run MCE + Inline::C. Both modules are
