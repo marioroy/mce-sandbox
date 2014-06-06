@@ -151,8 +151,14 @@ my $use_threads;
 
 ## Validation.
 
-my $F_arg = (defined $ARGV[1]) ? eval $ARGV[0] : 1;
-my $N_arg = (defined $ARGV[1]) ? eval $ARGV[1] : eval $ARGV[0];
+my $F_arg = (defined $ARGV[1]) ? $ARGV[0] : 1;
+my $N_arg = (defined $ARGV[1]) ? $ARGV[1] : $ARGV[0];
+
+{
+   local $@;
+   $F_arg = sprintf("%u", eval $F_arg);
+   $N_arg = sprintf("%u", eval $N_arg);
+}
 
 Sandbox::check_numbers($prog_name, $max_number, $F_arg, $N_arg, $sum_flag);
 
