@@ -34,7 +34,10 @@ BEGIN {
 }
 
 use Math::BigInt try => 'GMP';
-use Math::Prime::Util qw(primes prime_count forprimes);
+
+use Math::Prime::Util qw(
+   prime_precalc prime_memfree primes prime_count forprimes
+);
 
 ## use bigint;
 
@@ -246,12 +249,11 @@ my $mce = MCE->new(
 syswrite(\*STDERR, "  0%\r") unless $quiet_flag;
 my $start = time();
 
-if ($run_mode == MODE_COUNT) {
-   $Sandbox::N_agg = prime_count($F, $N);
-}
-else {
-   $mce->run();
-}
+prime_precalc(int(sqrt($N)));
+
+$mce->run();
+
+prime_memfree();
 
 exit(Sandbox::end($quiet_flag, $run_mode, time() - $start));
 

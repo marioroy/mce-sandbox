@@ -13,10 +13,10 @@
 
 #include "sandbox.h"
 
-const int64_t QP_LIMIT = 333333333;   // sqrt(1e18)/3
+const  int64_t  QP_LIMIT = 1054092553;   // sqrt(1e19)/3
 
 static uint64_t FROM_val, FROM_adj, N_val;
-static byte_t *is_prime, *pre_sieve17;
+static byte_t   *is_prime, *pre_sieve17;
 
 //#############################################################################
 // ----------------------------------------------------------------------------

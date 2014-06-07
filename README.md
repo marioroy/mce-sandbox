@@ -45,8 +45,7 @@ at startup. Simply remove the .Inline directory after making changes to any
 The primesieve.pl/.c and primeutil.pl examples are complementary additions.
 These have additional dependencies described below. Primesieve.c is small.
 It demonstrates the generation of primes coming from an external C API.
-Primeutil.pl is similar but from a Perl module instead. MCE is not used when
-counting primes with Math::Prime::Util due to optimized for one core.
+Primeutil.pl is similar but from a Perl module instead.
 
 ## Dependencies
 

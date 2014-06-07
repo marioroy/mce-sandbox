@@ -205,12 +205,10 @@ my ($factor, $sieve_size, $step_size);
 my $F_adj = $F - ($F % 6) + 1;
 
 $factor =
-   ($N >= 1e19) ? .5 : ($N >= 1e18) ?  1 : ($N >= 1e17) ?  2 :
-   ($N >= 1e16) ?  3 : ($N >= 1e15) ?  5 : ($N >= 1e14) ?  8 :
-   ($N >= 1e13) ? 13 : ($N >= 1e12) ? 21 : ($N >= 1e11) ? 34 :
-   ($N >= 1e10) ? 55 : ($N >= 1e9 ) ? 89 : 144;
+   ($N >= 1e17) ?  2 : ($N >= 1e16) ?  3 : ($N >= 1e15) ?  8 :
+   ($N >= 1e14) ? 21 : ($N >= 1e13) ? 34 : ($N >= 1e12) ? 55 : 233;
 
-$sieve_size  = int(16e7 / $factor * .8);
+$sieve_size  = int(16e7 / $factor * 4);
 $sieve_size -= $sieve_size % 510510;
 $sieve_size  = 510510 if $sieve_size < 510510;
 
