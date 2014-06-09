@@ -44,17 +44,14 @@ sub check_numbers
 
    local $@; no warnings;
 
-   $F_arg = eval $F_arg;
-   $N_arg = eval $N_arg;
-
    die "$prog_name: number must be an integer greater than 0.\n"
       unless defined $F_arg && defined $N_arg;
 
-   die "$prog_name: number $F_arg must be an integer greater than 0.\n"
+   die "$prog_name: 1st number must be an integer greater than 0.\n"
       unless looks_like_number($F_arg) &&
          $F_arg > 0 && int($F_arg) == $F_arg;
 
-   die "$prog_name: number $N_arg must be an integer greater than $F_arg.\n"
+   die "$prog_name: 2nd number must be an integer greater than $F_arg.\n"
       unless looks_like_number($N_arg) &&
          $N_arg >= $F_arg && int($N_arg) == $N_arg;
 
