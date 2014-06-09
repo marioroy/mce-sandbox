@@ -12,14 +12,7 @@
 
 typedef unsigned char byte_t;
 
-static const byte_t unset_bit[8] = {
-   (byte_t) ~(1 << 0), (byte_t) ~(1 << 1),
-   (byte_t) ~(1 << 2), (byte_t) ~(1 << 3),
-   (byte_t) ~(1 << 4), (byte_t) ~(1 << 5),
-   (byte_t) ~(1 << 6), (byte_t) ~(1 << 7)
-};
-
-static const byte_t popcnt_byte[256] = {
+static const int popcnt_byte[256] = {
    0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
@@ -29,6 +22,15 @@ static const byte_t popcnt_byte[256] = {
    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8
 };
+
+static const int unset_bit[8] = {
+   ~(1 << 0), ~(1 << 1), ~(1 << 2), ~(1 << 3),
+   ~(1 << 4), ~(1 << 5), ~(1 << 6), ~(1 << 7)
+};
+
+#define CLEARBIT(s, i) s[(int64_t) (i) >> 3] &= unset_bit[i & 7]
+#define ISBITSET(s, i) s[(int64_t) (i) >> 3] &  (1 << ((i) & 7))
+#define SETBIT(s, i)   s[(int64_t) (i) >> 3] |= (1 << ((i) & 7))
 
 // I received help for the following by reading popcount.cpp from
 // primesieve.org and util.c (popcnt) from Math::Prime::Util.

@@ -55,14 +55,14 @@ void practicalsieve_init(
    is_prime = (byte_t *) malloc(mem_sz);
    memset(is_prime, 0xff, mem_sz);
 
-   // Clear small composites <= q. Note, workers sieve <= M.
+   // Clear small composites <= q. Workers to clear <= M.
    for (i = 1; i <= q; i++) {
       k  = 3 - k, c = 4 * k * i + c, j = c;
       ij = 2 * i * (3 - k) + 1, t = 4 * k + t;
 
-      if (is_prime[i >> 3] & (1 << (i & 7))) {
+      if (ISBITSET(is_prime, i)) {
          while (j <= q) {
-            is_prime[j >> 3] &= unset_bit[j & 7];
+            CLEARBIT(is_prime, j);
             j += ij, ij = t - ij;
          }
       }
@@ -73,10 +73,10 @@ void practicalsieve_init(
    //====================================================================
 
    sieve_sz /= 3, mem_sz = (sieve_sz + 2 + 7) / 8;
-   pre_sieve17 = (byte_t *) malloc(mem_sz);
 
+   pre_sieve17 = (byte_t *) malloc(mem_sz);
    memset(pre_sieve17, 0xff, mem_sz);
-   pre_sieve17[0] = 0xfe;
+   CLEARBIT(pre_sieve17, 0);
 
    j_off = (FROM_adj - 1) / 3;
    c = 0, k = 1, t = 2;
@@ -96,8 +96,9 @@ void practicalsieve_init(
       c_off = (int64_t) j - j_off;
 
       while ((c_off >> 3) < mem_sz) {
-         pre_sieve17[c_off >> 3] &= unset_bit[c_off & 7];
-         j += ij, ij = t - ij, c_off = (int64_t) j - j_off;
+         CLEARBIT(pre_sieve17, c_off);
+         j += ij, ij = t - ij;
+         c_off = (int64_t) j - j_off;
       }
    }
 
@@ -161,30 +162,35 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
 
    sieve = (byte_t *) malloc(mem_sz);
 
-   // Copy pre-sieved data into sieve. Correct byte 0 if starting at 1.
+   // Copy pre-sieved data into sieve.
    memcpy(sieve, pre_sieve17, mem_sz);
 
-   if (start == 1) sieve[0] = 0xfe; // Undoes 0xc0; primes 5,7,11,13,17.
+   // Fix byte 0 if starting at 1 (has primes 5,7,11,13,17).
+   if (start == 1) sieve[0] = 0xfe;
 
    // Unset bits > limit.
    i = mem_sz * 8 - (size + 2);
 
-   while (i)
-      sieve[mem_sz - 1] &= unset_bit[8 - (i--)];
+   while (i) {
+      CLEARBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
+      i--;
+   }
 
-   // Clear composites < FROM_val and > N_val.
+   // Clear composites < FROM_val.
    if (start == FROM_adj) {
       for (i = 1; i <= 3; i++) {
          if (n_off + (3 * i + 1 | 1) >= FROM_val)
             break;
-         sieve[i >> 3] &= unset_bit[i & 7];
+         CLEARBIT(sieve, i);
       }
    }
+
+   // Clear composites > N_val.
    if (limit == N_val) {
-      if (n_off + (3 * size + 2) > N_val + (N_val & 1))
-         sieve[size >> 3] &= unset_bit[size & 7];
       if (n_off + (3 * (size + 1) + 1) > N_val + (N_val & 1))
-         sieve[(size + 1) >> 3] &= unset_bit[(size + 1) & 7];
+         CLEARBIT(sieve, size + 1);
+      if (n_off + (3 * size + 2) > N_val + (N_val & 1))
+         CLEARBIT(sieve, size);
    }
 
    // Process this block. Sieving begins with 19 (i = 6).
@@ -192,8 +198,8 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
       k  = 3 - k, c = 4 * k * i + c, j = c;
       ij = 2 * i * (3 - k) + 1, t = 4 * k + t;
 
-      // The is_prime array enables workers to bypass this many times.
-      if ((flag = (i > QP_LIMIT)) || is_prime[i >> 3] & (1 << (i & 7))) {
+      // The is_prime array enables workers to bypass block many times.
+      if ((flag = (i > QP_LIMIT)) || ISBITSET(is_prime, i)) {
 
          // Skip multiples of 5.
          if (flag && (3 * i + k) % 5 == 0)
@@ -208,8 +214,7 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
 
          // Clear composites.
          while (j <= M) {
-            const int64_t c_off = (int64_t) j - j_off;
-            sieve[c_off >> 3] &= unset_bit[c_off & 7];
+            CLEARBIT(sieve, j - j_off);
             j += ij, ij = t - ij;
          }
       }
@@ -234,9 +239,9 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
          n_ret += 3;
 
       for (i = 1; i <= size; i += 2) {
-         if (sieve[i >> 3] & (1 << (i & 7)))
+         if (ISBITSET(sieve, i))
             n_ret += n_off + (3 * i + 2);
-         if (sieve[(i + 1) >> 3] & (1 << ((i + 1) & 7)))
+         if (ISBITSET(sieve, i + 1))
             n_ret += n_off + (3 * (i + 1) + 1);
       }
    }
@@ -261,10 +266,10 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
          write_output(fd, buf, 3, &len);
 
       for (i = 1; i <= size; i += 2) {
-         if (sieve[i >> 3] & (1 << (i & 7)))
+         if (ISBITSET(sieve, i))
             if ((err = write_output(fd, buf, n_off + (3*i+2), &len)))
                break;
-         if (sieve[(i + 1) >> 3] & (1 << ((i + 1) & 7)))
+         if (ISBITSET(sieve, i + 1))
             if ((err = write_output(fd, buf, n_off + (3*(i+1)+1), &len)))
                break;
       }
