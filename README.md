@@ -152,12 +152,14 @@ Math::Prime::Util (Dana Jacobsen).
 I remembered Rocco Caputo during this time for a trick seen long ago in POE
 on exporting variables without having to require Exporter.
 
+## Algorithm3 (non-segmented)
+
 Xuedong Luo inspired me to look at Math in a new light. The example included
-with mce-sandbox is a segmented-bit version of Algorithm3 below. My favorite
+with mce-sandbox is the segmented version of Algorithm3 below. My favorite
 statement is "k = 3 - k". The value alternates between 1 and 2 repeatedly.
 
 ```C
-  // Algorithm3 (non-segmented, sequential version) [1].
+  // Algorithm3 (non-segmented version) [1].
   //
   // Avoid all composites that have 2 or 3 as one of their prime
   // factors (where i is odd).
@@ -165,66 +167,80 @@ statement is "k = 3 - k". The value alternates between 1 and 2 repeatedly.
   // { 0, 5, 7, 11, 13, ... 3i + 2, 3(i + 1) + 1, ..., N }
   //   0, 1, 2,  3,  4, ... list indices (0 is not used)
 
+  // Compiling with gcc:
+  //   gcc -I../src -O2 practicalsieve.c -o practicalsieve
+
   #include <stdint.h>
-  #include <stdlib.h>
   #include <string.h>
+  #include <stdlib.h>
   #include <stdio.h>
   #include <math.h>
 
-  void algorithm3(uint64_t limit)
+  #include "bits.h"
+
+  void practicalsieve(uint64_t limit)
   {
-     int64_t i, j, q = (int64_t) sqrt((double) limit) / 3;
+     int64_t  i, j, q = (int64_t) sqrt((double) limit) / 3;
      uint64_t M = (uint64_t) limit / 3;
      uint64_t c = 0, k = 1, t = 2, ij;
-     char *is_prime;
+     int64_t  mem_sz = (M + 2 + 7) / 8;
+     byte_t   *sieve;
 
-     is_prime = (char *) malloc(M + 2);
-     memset(is_prime, 1, M + 2);
+     uint64_t count = (limit < 2) ? 0 : (limit < 3) ? 1 : 2;
 
-     if (3 * M + 2 > limit + (limit & 1))
-        is_prime[M] = 0;
+     sieve = (byte_t *) malloc(mem_sz);
+     memset(sieve, 0xff, mem_sz);
+     CLEARBIT(sieve, 0);
+
+     // unset bits > limit;
+     i = mem_sz * 8 - (M + 2);
+
+     while (i) {
+        CLEARBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
+        i--;
+     }
+
      if (3 * (M + 1) + 1 > limit + (limit & 1))
-        is_prime[M + 1] = 0;
+        CLEARBIT(sieve, M + 1);
+     if (3 * M + 2 > limit + (limit & 1))
+        CLEARBIT(sieve, M);
 
      for (i = 1; i <= q; i++) {
         k  = 3 - k, c = 4 * k * i + c, j = c;
         ij = 2 * i * (3 - k) + 1, t = 4 * k + t;
 
-        if (is_prime[i]) {
+        if (ISBITSET(sieve, i)) {
            while (j <= M) {
-              is_prime[j] = 0;
+              CLEARBIT(sieve, j);
               j += ij, ij = t - ij;
            }
         }
      }
 
-     uint64_t count = (limit < 2) ? 0 : (limit < 3) ? 1 : 2;
+     count += popcount(sieve, mem_sz);
 
-     for (i = 1; i <= M; i += 2) {
-        if (is_prime[i]) {
-        // printf("%llu\n", 3 * i + 2);
-           count++;
-        }
-        if (is_prime[i+1]) {
-        // printf("%llu\n", 3 * (i + 1) + 1);
-           count++;
-        }
-     }
+     // for (i = 1; i <= M; i += 2) {
+     //    if (ISBITSET(sieve, i))
+     //       printf("%llu\n", 3 * i + 2);
+     //    if (ISBITSET(sieve, i + 1))
+     //       printf("%llu\n", 3 * (i + 1) + 1);
+     // }
+
+     free((void *) sieve);
+     sieve = NULL;
 
      printf("%llu primes found.\n", count);
-
-     free((void *) is_prime);
   }
 
   int main(int argc, char** argv)
   {
-     // count all primes below this number
+     // count the primes below this number
      uint64_t limit = 100000000;
 
      if (argc >= 2)
         limit = strtoull(argv[1], NULL, 10);
 
-     algorithm3(limit);
+     practicalsieve(limit);
 
      return 0;
   }
