@@ -9,6 +9,7 @@ our $VERSION = '1.000';
 ## use bigint;
 
 use Scalar::Util qw(looks_like_number);
+use Time::HiRes qw(sleep);
 use Fcntl qw(O_RDONLY);
 
 use constant {
@@ -66,7 +67,7 @@ sub check_numbers
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## Callback functions for MCE.
+## Input/output iterators for MCE.
 ##
 ###############################################################################
 
@@ -86,17 +87,12 @@ sub o_iter
 {
    my ($F, $N, $step_size, $quiet_flag, $run_mode) = @_;
 
-   my ($completed, $inc, $progress) = (1, 1.0, 0.0);
-   my $factor = int(($N - $F) / $step_size) + 1;
+   my (%cache, $file, $fh, $n_read, $buf, $order_id);
+   my ($completed, $inc, $progress) = (1, 99.0, 0.0);
    my $show_progress = $quiet_flag ? 0 : 1;
 
-   if ($factor >= 100) {
-      $factor = int(($factor - 1) / 100) + 1;
-   } else {
-      $inc = 100 / $factor;
-   }
-
-   my (%cache, $file, $fh, $n_read, $buf, $order_id);
+   $inc = 99.0 / (($N - $F) / $step_size)
+      if ($N - $F >= $step_size);
 
    if ($run_mode == MODE_PRINT) {
       $buf = sprintf("%49152s", "");
@@ -106,8 +102,7 @@ sub o_iter
 
    return sub {
 
-      syswrite(\*STDERR, "  " . int($progress += $inc) . "%\r")
-         if ($show_progress && ++$completed % $factor == 0);
+      syswrite(\*STDERR, "  " . int($progress += $inc) . "%\r");
 
       if ($run_mode != MODE_PRINT) {
          $N_agg += $_[0];
@@ -158,7 +153,7 @@ sub end
    else {
       if ($lapse > 0.125) {
          syswrite(\*STDERR, "  100%\r");
-         sleep(0.07);
+         sleep(0.08);
       }
       syswrite(\*STDERR, "      \r");
 

@@ -159,7 +159,7 @@ my $F_arg = (defined $ARGV[1]) ? $ARGV[0] : 1;
 my $N_arg = (defined $ARGV[1]) ? $ARGV[1] : $ARGV[0];
 
 {
-   local $@;
+   local $@; no warnings;
    $F_arg = sprintf("%u", eval $F_arg);
    $N_arg = sprintf("%u", eval $N_arg);
 }
@@ -201,8 +201,10 @@ use Inline 'C' => "${base_dir}/src/algorithm3.c";
 ## Sieve size must be a factor of 510510 for the pre-sieving logic:
 ## (2)(3) pre-sieves (5)(7)(11)(13)(17).
 
-my ($factor, $sieve_size, $step_size);
-my $F_adj = $F - ($F % 6) + 1;
+my ($F_adj, $factor, $sieve_size, $step_size);
+
+$F_adj = $F - ($F % 6) - 6 + 1;
+$F_adj = 1 if $F_adj < 1;
 
 $factor =
    ($N >= 1e17) ?  2 : ($N >= 1e16) ?  3 : ($N >= 1e15) ?  8 :
@@ -275,11 +277,11 @@ my $mce = MCE->new(
 syswrite(\*STDERR, "  0%\r") unless $quiet_flag;
 my $start = time();
 
-practicalsieve_init($F, $F_adj, $N, $sieve_size);
+practicalsieve_precalc($F_adj, $F, $N, $sieve_size);
 
 $mce->run();
 
-practicalsieve_finish();
+practicalsieve_memfree();
 
 exit(Sandbox::end($quiet_flag, $run_mode, time() - $start));
 

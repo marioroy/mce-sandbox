@@ -20,24 +20,24 @@ static byte_t   *is_prime, *pre_sieve17;
 
 //#############################################################################
 // ----------------------------------------------------------------------------
-// Sieve init and finish functions.
+// Practical sieve (precalc) and (memfree) functions.
 //
 //#############################################################################
 
-void practicalsieve_init(
-      SV *from_val_sv, SV *from_adj_sv, SV *n_val_sv, SV *sieve_sz_sv )
+void practicalsieve_precalc(
+      SV *from_adj_sv, SV *from_val_sv, SV *n_val_sv, SV *sieve_sz_sv )
 {
    uint64_t j_off, c, k, t, j, ij, sieve_sz;
    int64_t  c_off, i, q, mem_sz;
 
    #ifdef __LP64__
-      FROM_val = SvUV(from_val_sv);
       FROM_adj = SvUV(from_adj_sv);
+      FROM_val = SvUV(from_val_sv);
       N_val    = SvUV(n_val_sv);
       sieve_sz = SvUV(sieve_sz_sv);
    #else
-      FROM_val = strtoull(SvPV_nolen(from_val_sv), NULL, 10);
       FROM_adj = strtoull(SvPV_nolen(from_adj_sv), NULL, 10);
+      FROM_val = strtoull(SvPV_nolen(from_val_sv), NULL, 10);
       N_val    = strtoull(SvPV_nolen(n_val_sv), NULL, 10);
       sieve_sz = strtoull(SvPV_nolen(sieve_sz_sv), NULL, 10);
    #endif
@@ -105,14 +105,16 @@ void practicalsieve_init(
    //====================================================================
    // At this point, i = 6, c = 96, k = 2, and t = 34.
    // Workers will not need to process i = 1 through 5.
+   //
+   // Clear bits for 5,7,11,13,17 including bit 0.
+   // A worker will undo this if starting at 1.
    //====================================================================
 
-   // Clear bits for 5,7,11,13,17 including bit 0.
-   // A worker will undo this only when starting at 1.
-   if (FROM_adj == 1) pre_sieve17[0] = 0xc0;
+   if (FROM_adj == 1)
+      pre_sieve17[0] = 0xc0;
 }
 
-void practicalsieve_finish()
+void practicalsieve_memfree()
 {
    free((void *) pre_sieve17);
    pre_sieve17 = NULL;
@@ -136,8 +138,8 @@ void practicalsieve_finish()
 SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
 {
    AV       *ret;
-   uint64_t n_ret, start, limit, j_off, n_off, M, c, k, t, j, ij;
-   int64_t  q, size, i, mem_sz;
+   uint64_t n_ret, start, limit, j_off, n_off, M1, c, k, t, j, ij;
+   int64_t  q, M2, i, mem_sz;
    byte_t   *sieve;
    int      err, flag;
 
@@ -155,10 +157,10 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
    // Sieve algorithm.
    //====================================================================
 
-   M = limit / 3, c = 96, k = 2, t = 34, q = sqrt(limit) / 3;
-   size = (limit + (limit & 1) - start) / 3;
+   M1 = limit / 3, c = 96, k = 2, t = 34, q = sqrt(limit) / 3;
+   M2 = (limit + (limit & 1) - start) / 3;
    n_off = start - 1, j_off = n_off / 3;
-   mem_sz = (size + 2 + 7) / 8;
+   mem_sz = (M2 + 2 + 7) / 8;
 
    sieve = (byte_t *) malloc(mem_sz);
 
@@ -169,7 +171,7 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
    if (start == 1) sieve[0] = 0xfe;
 
    // Unset bits > limit.
-   i = mem_sz * 8 - (size + 2);
+   i = mem_sz * 8 - (M2 + 2);
 
    while (i) {
       CLEARBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
@@ -187,10 +189,10 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
 
    // Clear composites > N_val.
    if (limit == N_val) {
-      if (n_off + (3 * (size + 1) + 1) > N_val + (N_val & 1))
-         CLEARBIT(sieve, size + 1);
-      if (n_off + (3 * size + 2) > N_val + (N_val & 1))
-         CLEARBIT(sieve, size);
+      if (n_off + (3 * (M2 + 1) + 1) > N_val + (N_val & 1))
+         CLEARBIT(sieve, M2 + 1);
+      if (n_off + (3 * M2 + 2) > N_val + (N_val & 1))
+         CLEARBIT(sieve, M2);
    }
 
    // Process this block. Sieving begins with 19 (i = 6).
@@ -213,7 +215,7 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
          }
 
          // Clear composites.
-         while (j <= M) {
+         while (j <= M1) {
             CLEARBIT(sieve, j - j_off);
             j += ij, ij = t - ij;
          }
@@ -238,7 +240,7 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
       if (3 >= start && 3 >= FROM_val && 3 <= N_val)
          n_ret += 3;
 
-      for (i = 1; i <= size; i += 2) {
+      for (i = 1; i <= M2; i += 2) {
          if (ISBITSET(sieve, i))
             n_ret += n_off + (3 * i + 2);
          if (ISBITSET(sieve, i + 1))
@@ -265,7 +267,7 @@ SV* practicalsieve(SV *start_sv, SV *limit_sv, int run_mode, int fd)
       if (3 >= start && 3 >= FROM_val && 3 <= N_val)
          write_output(fd, buf, 3, &len);
 
-      for (i = 1; i <= size; i += 2) {
+      for (i = 1; i <= M2; i += 2) {
          if (ISBITSET(sieve, i))
             if ((err = write_output(fd, buf, n_off + (3*i+2), &len)))
                break;

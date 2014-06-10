@@ -155,7 +155,7 @@ my $F_arg = (defined $ARGV[1]) ? $ARGV[0] : 1;
 my $N_arg = (defined $ARGV[1]) ? $ARGV[1] : $ARGV[0];
 
 {
-   local $@;
+   local $@; no warnings;
    $F_arg = sprintf("%u", eval $F_arg);
    $N_arg = sprintf("%u", eval $N_arg);
 }
