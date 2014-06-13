@@ -197,9 +197,9 @@ use Inline 'C' => "${base_dir}/src/algorithm3.c";
 ##
 ###############################################################################
 
-## Step size must be a factor of 6. Do not increase beyond the maximum below.
-## Sieve size must be a factor of 510510 for the pre-sieving logic:
-## (2)(3) pre-sieves (5)(7)(11)(13)(17).
+## Step size must be a multiple of 6. Sieve size requires a multiple of 510510
+## for the pre-sieve logic: (2)(3) pre-sieves (5)(7)(11)(13)(17).
+## Do not increase beyond the maximum below.
 
 my ($F_adj, $factor, $sieve_size, $step_size);
 

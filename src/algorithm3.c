@@ -42,6 +42,12 @@ void practicalsieve_precalc(
       sieve_sz = strtoull(SvPV_nolen(sieve_sz_sv), NULL, 10);
    #endif
 
+   if (sieve_sz % 510510 != 0) {
+      // A multiple of 510510 is required for the pre-sieve logic.
+      fprintf(stderr, "error: sieve_sz is not a multiple of 510510\n");
+      exit(2);
+   }
+
    //====================================================================
    // Compute is_prime. This enables workers to process faster.
    //====================================================================
