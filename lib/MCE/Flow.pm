@@ -14,7 +14,7 @@ use Scalar::Util qw( looks_like_number );
 use MCE;
 use MCE::Util;
 
-our $VERSION = '1.514'; $VERSION = eval $VERSION;
+our $VERSION = '1.515'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -122,8 +122,8 @@ sub mce_flow_f (@) {
    my ($_file, $_pos); my $_start_pos = (ref $_[0] eq 'HASH') ? 2 : 1;
 
    for ($_start_pos .. @_ - 1) {
-      my $_ref = ref $_[$_];
-      if ($_ref eq "" || $_ref eq 'GLOB' || $_ref eq 'SCALAR') {
+      my $_r = ref $_[$_];
+      if ($_r eq "" || $_r eq 'GLOB' || $_r eq 'SCALAR' || $_r =~ /^IO::/) {
          $_file = $_[$_]; $_pos = $_;
          last;
       }
@@ -143,7 +143,7 @@ sub mce_flow_f (@) {
       _croak("$_tag: '$_file' is not a plain file") unless (-f $_file);
       $_params->{_file} = $_file;
    }
-   elsif (ref $_file eq 'GLOB' || ref $_file eq 'SCALAR') {
+   elsif (ref $_file eq 'GLOB' || ref $_file eq 'SCALAR' || ref($_file) =~ /^IO::/) {
       $_params->{_file} = $_file;
    }
    else {
@@ -282,7 +282,7 @@ sub mce_flow (@) {
 
    my $_input_data; my $_max_workers = $MAX_WORKERS; my $_r = ref $_[0];
 
-   if ($_r eq 'ARRAY' || $_r eq 'GLOB' || $_r eq 'SCALAR') {
+   if ($_r eq 'ARRAY' || $_r eq 'GLOB' || $_r eq 'SCALAR' || $_r =~ /^IO::/) {
       $_input_data = shift;
    }
 
@@ -432,7 +432,7 @@ MCE::Flow - Parallel flow model for building creative applications
 
 =head1 VERSION
 
-This document describes MCE::Flow version 1.514
+This document describes MCE::Flow version 1.515
 
 =head1 DESCRIPTION
 

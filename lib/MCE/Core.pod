@@ -5,7 +5,7 @@ MCE::Core - Documentation describing the core API for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Core version 1.514
+This document describes MCE::Core version 1.515
 
 =head1 SYNOPSIS
 
@@ -397,7 +397,7 @@ completed processing or running.
 
 =head2 SYNTAX for INPUT_DATA
 
-MCE supports 5 ways to specify input_data. Support for iterators was added
+MCE supports many ways to specify input_data. Support for iterators was added
 in MCE 1.505. The RS option allows one to specify the record separator when
 processing files. Specifying input_data is optional and not a requirement
 for spawning many workers to do different things.
@@ -410,6 +410,9 @@ reference.
    input_data  => '/path/to/file',  ## for file paths
    input_data  => \@array,          ## for arrays
    input_data  => \*FILE_HNDL,      ## for file handles
+   input_data  => $fh,              ## open $fh, "<", "file"
+   input_data  => $fh,              ## new IO::File "file", "r"
+   input_data  => $fh,              ## new IO::Uncompress::Gunzip "file.gz"
    input_data  => \$scalar,         ## treated like a file
    input_data  => \&iterator,       ## for iterators
 

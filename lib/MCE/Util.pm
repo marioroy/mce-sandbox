@@ -12,7 +12,7 @@ use warnings;
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.514'; $VERSION = eval $VERSION;
+our $VERSION = '1.515'; $VERSION = eval $VERSION;
 
 our @EXPORT_OK = qw( get_ncpu );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
@@ -192,7 +192,7 @@ sub _parse_chunk_size {
          $_is_file = 1;
       }
       elsif (defined $_input_data) {
-         if (ref $_input_data eq 'GLOB') {
+         if (ref $_input_data eq 'GLOB' || ref($_input_data) =~ /^IO::/) {
             $_is_file = 1; $_size = 0; $_chunk_size = 245760;
          }
          elsif (ref $_input_data eq 'SCALAR') {
@@ -233,7 +233,7 @@ MCE::Util - Public and private utility functions for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.514
+This document describes MCE::Util version 1.515
 
 =head1 SYNOPSIS
 

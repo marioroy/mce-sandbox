@@ -29,7 +29,7 @@ use Time::HiRes qw( time );
 use MCE::Signal;
 use bytes;
 
-our $VERSION = '1.514'; $VERSION = eval $VERSION;
+our $VERSION = '1.515'; $VERSION = eval $VERSION;
 
 our (%_valid_fields_new, %_params_allowed_args, %_valid_fields_task);
 our ($_is_cygwin, $_is_MSWin32, $_is_WinEnv);
@@ -964,7 +964,8 @@ sub run {
       $_first_msg = 0;
    }
    elsif (defined $self->{input_data}) {
-      if (ref $self->{input_data} eq 'ARRAY') {      ## Array mode.
+      my $_ref = ref $self->{input_data};
+      if ($_ref eq 'ARRAY') {                        ## Array mode.
          $_run_mode   = 'array';
          $_input_data = $self->{input_data};
          $_input_file = $_input_glob = undef;
@@ -975,21 +976,21 @@ sub run {
             return $self->shutdown() if ($_auto_shutdown == 1);
          }
       }
-      elsif (ref $self->{input_data} eq 'GLOB') {    ## Glob mode.
+      elsif ($_ref eq 'GLOB' || $_ref =~ /^IO::/) {  ## Glob mode.
          $_run_mode   = 'glob';
          $_input_glob = $self->{input_data};
          $_input_data = $_input_file = undef;
          $_abort_msg  = 0; ## Flag: Has Data: No
          $_first_msg  = 1; ## Flag: Has Data: Yes
       }
-      elsif (ref $self->{input_data} eq 'CODE') {    ## Iterator mode.
+      elsif ($_ref eq 'CODE') {                      ## Iterator mode.
          $_run_mode   = 'iterator';
          $_input_data = $self->{input_data};
          $_input_file = $_input_glob = undef;
          $_abort_msg  = 0; ## Flag: Has Data: No
          $_first_msg  = 1; ## Flag: Has Data: Yes
       }
-      elsif (ref $self->{input_data} eq '') {        ## File mode.
+      elsif ($_ref eq '') {                          ## File mode.
          $_run_mode   = 'file';
          $_input_file = $self->{input_data};
          $_input_data = $_input_glob = undef;
@@ -999,7 +1000,7 @@ sub run {
             return $self->shutdown() if ($_auto_shutdown == 1);
          }
       }
-      elsif (ref $self->{input_data} eq 'SCALAR') {  ## Memory mode.
+      elsif ($_ref eq 'SCALAR') {                    ## Memory mode.
          $_run_mode   = 'memory';
          $_input_data = $_input_file = $_input_glob = undef;
          $_abort_msg  = length(${ $self->{input_data} }) + 1;
