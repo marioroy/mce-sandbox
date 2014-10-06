@@ -5,7 +5,7 @@ MCE::Core - Documentation describing the core API for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Core version 1.515
+This document describes MCE::Core version 1.516
 
 =head1 SYNOPSIS
 
@@ -51,7 +51,7 @@ of 0,1,2 makes it more legible when accessing the array elements.
       print "Hello from ", $_[SELF]->wid, "\n";
    }
 
-   ## MCE 1.5 allows any public method to be be called directly.
+   ## MCE 1.5 allows any public method to be called directly.
 
    use MCE;
 
@@ -141,7 +141,7 @@ Below, a new instance is configured with all available options.
       use_slurpio  => 1,                 ## Default 0
       parallel_io  => 1,                 ## Default 0
 
-          ## Whether or not to enable slurpio when reading files
+          ## Whether to enable slurpio when reading files
           ## Passes raw chunk (scalar ref) to user function.
 
           ## The parallel_io option enables parallel reads during
@@ -250,8 +250,8 @@ Below, a new instance is configured with all available options.
           ##
           ##    sequence => [ -1, 1, 0.1, "%4.1f" ]
 
-          ## The bounds_only => 1 option will compute the begin and
-          ## end items only, for the chunk, and not the items in between
+          ## The bounds_only => 1 option will compute the 'begin' and
+          ## 'end' items only for the chunk and not the items in between
           ## (hence boundaries only). This option has no effect when
           ## sequence is missing or chunk_size equals 1.
           ##
@@ -433,8 +433,8 @@ many bytes to read. MCE appends (the rest) up to the next record separator.
    chunk_size  => '16K',            ## Approximate 16 kilobytes
    chunk_size  => '20M',            ## Approximate 20 megabytes
 
-The construction for user_func is as follow when chunk_size > 1 and assuming
-use_slurpio equals 0.
+The construction for user_func when chunk_size > 1 and assuming use_slurpio
+equals 0.
 
    user_func => sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -740,9 +740,9 @@ Sequence can be defined using an array or a hash reference.
    18.4 from 1 id 13
 
 The 1.5 release includes a new option (bounds_only). This option tells the
-sequence engine to compute the begin and end items only for the chunk and
-not the items in between (hence boundaries only). This option applies to
-sequence only and has no effect when chunk_size equals 1.
+sequence engine to compute the 'begin' and 'end' items only for the chunk
+and not the items in between (hence boundaries only). This option applies
+to sequence only and has no effect when chunk_size equals 1.
 
 The time to run for MCE below is 0.006s. This becomes 0.827s without the
 bounds_only option due to computing all items in between as well, thus
@@ -1052,11 +1052,11 @@ The methods listed below are callable by the main process and workers.
 
 =item ->abort ( void )
 
-The abort method is applicable when processing input_data only. This causes
+The 'abort' method is applicable when processing input_data only. This causes
 all workers to abort after processing the current chunk.
 
 Workers write the next offset position to the queue socket for the next
-available worker. In essence, the abort method writes the last offset
+available worker. In essence, the 'abort' method writes the last offset
 position. Workers, on requesting the next offset position, will think
 the end of input_data has been reached and leave the chunking loop.
 
@@ -1279,7 +1279,7 @@ Allowable options { key => value, ... } are:
    user_func user_error user_output use_slurpio
 
 Options remain persistent going forward unless changed. Setting user_begin,
-user_end, or user_func will cause already spawned workers to shutdown and
+user_end, or user_func will cause already spawned workers to shut down and
 re-spawn automatically. Therefore, define these during instantiation if
 possible.
 
@@ -1302,7 +1302,7 @@ block is different altogether.
    }, "/list/of/files" );
 
 To have persistent workers, it's better to do the following instead. Workers
-will stay alive until told to shutdown or during the exiting of the script.
+will stay alive until told to shut down or during the exiting of the script.
 Below is shown with overriding the default for max_workers.
 
    use MCE MAX_WORKERS => 'auto';
@@ -1413,7 +1413,7 @@ process method.
 
 =item ->send ( $data_ref )
 
-The send method is useful when wanting to spawn workers early to minimize
+The 'send' method is useful when wanting to spawn workers early to minimize
 memory consumption and afterwards send data individually to each worker. One
 cannot send more than the total workers spawned. Workers store the received
 data as $mce->{user_data}.
@@ -1507,9 +1507,9 @@ Methods listed below are callable by workers only.
 =item ->do ( 'callback_func' [, $arg1, ... ] )
 
 MCE can serialized data transfers from worker processes via helper functions
-do & sendto. The main MCE thread will process these in a serial fashion. This
-utilizes the Storable Perl module for passing data from a worker process to
-the main MCE thread. The callback function can optionally return a reply.
+do & sendto. The main MCE thread will process these serially. This utilizes
+the Storable Perl module for passing data from a worker process to the main
+MCE thread. The callback function can optionally return a reply.
 
    [ $reply = ] MCE->do('callback' [, $arg1, ... ]);
 
@@ -1800,9 +1800,9 @@ Barrier synchronization (sync) was added to MCE 1.406.
    c: 3
 
 Consider the following example. The sync operation is done inside a for loop
-along with calling the do method. A stall can occur for workers calling sync
-the 2nd or 3rd time while other workers are sending results via the do or
-sendto methods. It requires yet another semaphore lock file in MCE to solve
+along with calling the 'do' method. A stall may occur for workers calling sync
+the 2nd or 3rd time while other workers are sending results via 'do' or
+'sendto'. It requires yet another semaphore lock file in MCE to solve
 this which was not done in order to keep resources low.
 
 Therefore, please keep this in mind when mixing MCE->sync with the MCE->do
@@ -1840,7 +1840,7 @@ A use case is an app configured with 160 workers running on a 24 logical way
 box. Data is polled from the database containing over 2.5 million rows. Workers
 chunk away at 300 rows per chunk and perform SNMP gets (300 sockets per worker)
 to poll 25 metrics from each device. With this scenario, the load on the box,
-at some point, rises to 90+. In addition, IP_Tables reaches it's contention
+at some point, rises to 90+. In addition, IP_Tables reaches its contention
 point causing the entire app to fail.
 
 The above is solved by simply having workers yield among themselves in a
@@ -1899,8 +1899,8 @@ The user_tasks is configured to simulate 4 nodes below. The demonstration uses
       ## without the "interval" option.
 
       ## Yielding is beneficial inside a user_begin block. A use case
-      ## is wanting to stagger database connections among workers in
-      ## order to not impact the DB server.
+      ## is staggering database connections among workers in order
+      ## to not impact the DB server.
 
       MCE->yield;
 

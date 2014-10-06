@@ -12,7 +12,7 @@ use warnings;
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.515'; $VERSION = eval $VERSION;
+our $VERSION = '1.516'; $VERSION = eval $VERSION;
 
 our @EXPORT_OK = qw( get_ncpu );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
@@ -23,7 +23,7 @@ our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 ## returns the number of available (online/active/enabled) CPUs.
 ##
 ## Defaults to 1. A warning is emitted to STDERR when it cannot recognize
-## your operating system or the external command failed.
+## the operating system or the external command failed.
 ##
 ###############################################################################
 
@@ -233,7 +233,7 @@ MCE::Util - Public and private utility functions for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.515
+This document describes MCE::Util version 1.516
 
 =head1 SYNOPSIS
 

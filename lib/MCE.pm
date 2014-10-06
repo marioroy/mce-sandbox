@@ -11,7 +11,7 @@ use warnings;
 
 BEGIN {
    ## Forking is emulated under the Windows enviornment (excluding Cygwin).
-   ## MCE 1.514+ will load the threads module by default for Windows only.
+   ## MCE 1.514+ will load the 'threads' module by default on Windows only.
    ## Folks may specify use_threads => 0 if threads is not desired.
    if ($^O eq 'MSWin32' && not defined $threads::VERSION) {
       local $@; local $SIG{__DIE__} = \&_NOOP;
@@ -29,7 +29,7 @@ use Time::HiRes qw( time );
 use MCE::Signal;
 use bytes;
 
-our $VERSION = '1.515'; $VERSION = eval $VERSION;
+our $VERSION = '1.516'; $VERSION = eval $VERSION;
 
 our (%_valid_fields_new, %_params_allowed_args, %_valid_fields_task);
 our ($_is_cygwin, $_is_MSWin32, $_is_WinEnv);
@@ -559,13 +559,13 @@ sub spawn {
       $self->{_dat_r_sock} = []; $self->{_dat_w_sock} = [];
    }
 
-   _create_socket_pair($self, '_bsb_r_sock', '_bsb_w_sock', 1);  ## Sync
-   _create_socket_pair($self, '_bse_r_sock', '_bse_w_sock', 1);  ## Sync
-   _create_socket_pair($self, '_com_r_sock', '_com_w_sock', 0);  ## Core
-   _create_socket_pair($self, '_que_r_sock', '_que_w_sock', 1);  ## Core
+   _create_socket_pair($self, '_bsb_r_sock', '_bsb_w_sock');  ## Sync
+   _create_socket_pair($self, '_bse_r_sock', '_bse_w_sock');  ## Sync
+   _create_socket_pair($self, '_com_r_sock', '_com_w_sock');  ## Core
+   _create_socket_pair($self, '_que_r_sock', '_que_w_sock');  ## Core
 
-   _create_socket_pair($self, '_dat_r_sock', '_dat_w_sock', 1, 0);
-   _create_socket_pair($self, '_dat_r_sock', '_dat_w_sock', 0, $_)
+   _create_socket_pair($self, '_dat_r_sock', '_dat_w_sock', 0);
+   _create_socket_pair($self, '_dat_r_sock', '_dat_w_sock', $_)
       for (1 .. $_data_channels);
 
    ## Place 1 char in one socket to ensure Perl loads the required modules
@@ -1090,6 +1090,8 @@ sub run {
 
          <$_COM_R_SOCK>;
 
+         select(undef, undef, undef, 0.003) if ($_is_WinEnv);
+
          select(undef, undef, undef, $_submit_delay)
             if (defined $_submit_delay && $_submit_delay > 0.0);
       }
@@ -1271,8 +1273,8 @@ sub shutdown {
       <$_COM_R_SOCK>;
    }
 
-   CORE::shutdown $self->{_bse_w_sock}, 1;        ## Barrier end channels
-   CORE::shutdown $self->{_bse_r_sock}, 0;
+   CORE::shutdown $self->{_bse_w_sock}, 2;        ## Barrier end channels
+   CORE::shutdown $self->{_bse_r_sock}, 2;
 
    ## Reap children/threads.
    if ( $self->{_pids} && @{ $self->{_pids} } > 0 ) {
@@ -1293,15 +1295,15 @@ sub shutdown {
    ## -------------------------------------------------------------------------
 
    ## Close sockets.
-   CORE::shutdown $self->{_bsb_w_sock}, 1;        ## Barrier begin channels
-   CORE::shutdown $self->{_bsb_r_sock}, 0;
+   CORE::shutdown $self->{_bsb_w_sock}, 2;        ## Barrier begin channels
+   CORE::shutdown $self->{_bsb_r_sock}, 2;
    CORE::shutdown $self->{_com_w_sock}, 2;        ## Communication channels
    CORE::shutdown $self->{_com_r_sock}, 2;
-   CORE::shutdown $self->{_que_w_sock}, 1;        ## Queue channels
-   CORE::shutdown $self->{_que_r_sock}, 0;
+   CORE::shutdown $self->{_que_w_sock}, 2;        ## Queue channels
+   CORE::shutdown $self->{_que_r_sock}, 2;
 
-   CORE::shutdown $self->{_dat_w_sock}->[0], 1;   ## Data channels
-   CORE::shutdown $self->{_dat_r_sock}->[0], 0;
+   CORE::shutdown $self->{_dat_w_sock}->[0], 2;   ## Data channels
+   CORE::shutdown $self->{_dat_r_sock}->[0], 2;
 
    for (1 .. $_data_channels) {
       CORE::shutdown $self->{_dat_w_sock}->[$_], 2;
@@ -1816,8 +1818,8 @@ sub _NOOP { }
 
 sub _create_socket_pair {
 
-   my MCE $self  = $_[0]; my $_r_sock = $_[1]; my $_w_sock = $_[2];
-   my $_shutdown = $_[3]; my $_i      = $_[4];
+   my MCE $self = $_[0]; my $_r_sock = $_[1]; my $_w_sock = $_[2];
+   my $_i       = $_[3];
 
    @_ = (); local $!;
 
@@ -1829,11 +1831,6 @@ sub _create_socket_pair {
 
       binmode $self->{$_r_sock}->[$_i];
       binmode $self->{$_w_sock}->[$_i];
-
-      if ($_shutdown) {
-         CORE::shutdown $self->{$_r_sock}->[$_i], 1;   ## No more writing
-         CORE::shutdown $self->{$_w_sock}->[$_i], 0;   ## No more reading
-      }
 
       ## Autoflush handles.
       my $_old_hndl = select $self->{$_r_sock}->[$_i]; $| = 1;
@@ -1847,11 +1844,6 @@ sub _create_socket_pair {
 
       binmode $self->{$_r_sock};
       binmode $self->{$_w_sock};
-
-      if ($_shutdown) {
-         CORE::shutdown $self->{$_r_sock}, 1;          ## No more writing
-         CORE::shutdown $self->{$_w_sock}, 0;          ## No more reading
-      }
 
       ## Autoflush handles.
       my $_old_hndl = select $self->{$_r_sock}; $| = 1;

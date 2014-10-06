@@ -5,7 +5,7 @@ MCE - Many-core Engine for Perl. Provides parallel processing capabilities.
 
 =head1 VERSION
 
-This document describes MCE version 1.515
+This document describes MCE version 1.516
 
 =head1 DESCRIPTION
 
@@ -49,8 +49,8 @@ Currently, there are 2 addon modules.
 
 Provides a hybrid queuing implementation for MCE supporting normal queues and
 priority queues from a single module. MCE::Queue exchanges data via the core
-engine to enable queueing to work for both children (spawned from fork) as
-well as threads.
+engine to enable queueing to work for both children (spawned from fork) and
+threads.
 
 =item L<MCE::Subs>
 
@@ -91,7 +91,7 @@ Provides a parallel map model similar to the native map function.
 Provides a parallel step implementation utilizing MCE::Queue between user
 tasks. MCE::Step is a spin off from MCE::Flow with a touch of MCE::Stream.
 This model, introduced in 1.506, allows one to pass data from one sub-task
-into the next in a transparent fashion.
+into the next transparently.
 
 =item L<MCE::Stream>
 

@@ -11,7 +11,7 @@
 
 package MCE::Core::Input::Sequence;
 
-our $VERSION = '1.515'; $VERSION = eval $VERSION;
+our $VERSION = '1.516'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 

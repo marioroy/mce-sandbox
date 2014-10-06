@@ -16,7 +16,7 @@ use MCE::Util;
 
 use MCE::Queue;
 
-our $VERSION = '1.515'; $VERSION = eval $VERSION;
+our $VERSION = '1.516'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -515,7 +515,7 @@ MCE::Step - Parallel step model for building creative steps
 
 =head1 VERSION
 
-This document describes MCE::Step version 1.515
+This document describes MCE::Step version 1.516
 
 =head1 DESCRIPTION
 
@@ -606,7 +606,7 @@ allowed from the very last sub-block. There's a lot going on below. For one,
 STDOUT output is serialized back to the main process. We see that chunk_size
 is specified when loading the module and set to 1 for the demonstration.
 
-Data is gathered to @arr which may likely be out of order. Gathering data is
+Data is gathered to @arr which may likely be out-of-order. Gathering data is
 optional and not a requirement to use MCE::Step. Note that all sub-tasks
 receive the $mce instance as the very first argument.
 
@@ -945,7 +945,7 @@ Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core>.
 
 =back
 
-The sequence engine can compute the begin and end items only, for the chunk,
+The sequence engine can compute the 'begin' and 'end' items only, for the chunk,
 leaving out the items in between with the bounds_only option (boundaries only).
 This option applies to sequence and has no effect when chunk_size equals 1.
 
@@ -1100,7 +1100,7 @@ control. And here we go... but this time around in chunking style... :)
 The two options passed to MCE::Step are optional as they default to 'auto'. The
 beauty of chunking data is that IPC occurs once per chunk versus once per item.
 Although IPC is quite fast, chunking becomes beneficial the larger the data
-becomes. Hence the reason for the demonstration below.
+becomes. Hence, the reason for the demonstration below.
 
    use MCE::Step chunk_size => 'auto', max_workers => 'auto';
 

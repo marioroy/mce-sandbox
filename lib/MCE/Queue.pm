@@ -14,7 +14,7 @@ use Socket qw( :crlf PF_UNIX PF_UNSPEC SOCK_STREAM );
 use Scalar::Util qw( looks_like_number );
 use bytes;
 
-our $VERSION = '1.515'; $VERSION = eval $VERSION;
+our $VERSION = '1.516'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -130,6 +130,11 @@ sub DESTROY {
    return if (defined $MCE::MCE && $MCE::MCE->wid);
 
    if (defined $_queue->{_qr_sock}) {
+      local $!; local $?;
+
+      CORE::shutdown $_queue->{_qw_sock}, 2;
+      CORE::shutdown $_queue->{_qr_sock}, 2;
+
       close $_queue->{_qw_sock}; undef $_queue->{_qw_sock};
       close $_queue->{_qr_sock}; undef $_queue->{_qr_sock};
    }
@@ -202,9 +207,6 @@ sub new {
 
          binmode $_queue->{_qr_sock};
          binmode $_queue->{_qw_sock};
-
-         CORE::shutdown $_queue->{_qr_sock}, 1;      ## No more writing
-         CORE::shutdown $_queue->{_qw_sock}, 0;      ## No more reading
 
          my $_old_hndl = select $_queue->{_qr_sock}; $| = 1;
                          select $_queue->{_qw_sock}; $| = 1;
@@ -1600,7 +1602,7 @@ MCE::Queue - Hybrid queues (normal including priority) for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.515
+This document describes MCE::Queue version 1.516
 
 =head1 SYNOPSIS
 
@@ -1909,8 +1911,8 @@ numbers, not the data.
 The main reason for writing MCE::Queue was to have a Thread::Queue-like module
 for workers spawned as children. I was pleasantly surprised at the number of
 modules on CPAN for queuing. What stood out immediately were all the priority
-queues, heap queues, and whether or not (FIFO/LIFO) or (highest/lowest first)
-options were available. Hence the reason for MCE::Queue supporting both normal
+queues, heap queues, and whether (FIFO/LIFO) or (highest/lowest first) options
+are available. Hence, the reason for MCE::Queue supporting both normal
 and priority queues.
 
 The following provides a list of resources I've read in helping me create
@@ -1937,7 +1939,7 @@ choose LIFO/LILO, and highest/lowest order for the queue. The data structure
 in MCE::Queue is described above.
 
 MCE workers also benefit from being able to create local queues not available
-to other workers including the manager process. Hence the reason for the 3
+to other workers including the manager process. Hence, the reason for the 3
 run modes described at the beginning of this document.
 
 =item L<Thread::Queue>

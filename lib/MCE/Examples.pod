@@ -5,7 +5,7 @@ MCE::Examples - A list of examples demonstrating Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.515
+This document describes MCE::Examples version 1.516
 
 =head1 DESCRIPTION
 
@@ -66,7 +66,7 @@ count aggregation.
    matmult/matmult_base.pl, matmult_mce.pl, strassen_mce.pl
              Various matrix multiplication demonstrations benchmarking
              PDL, PDL + MCE, as well as parallelizing Strassen's
-             divide-and-conquer algorithm. Also included are 2 plain
+             divide-and-conquer algorithm. Included are 2 plain
              Perl examples.
 
    pipe1.pl, pipe2.pl

@@ -12,7 +12,7 @@ use warnings;
 use Fcntl qw( :flock O_RDONLY );
 use base qw( Exporter );
 
-our $VERSION = '1.515'; $VERSION = eval $VERSION;
+our $VERSION = '1.516'; $VERSION = eval $VERSION;
 
 our ($has_threads, $main_proc_id, $prog_name);
 our ($display_die_with_localtime, $display_warn_with_localtime);
@@ -130,7 +130,7 @@ $SIG{QUIT} = \&stop_and_exit;                          ## UNIX SIG  3
 $SIG{TERM} = \&stop_and_exit;                          ## UNIX SIG 15
 
 ## For a more reliable MCE, $SIG{CHLD} is set to 'DEFAULT'. MCE handles
-## the reaping of it's children, especially when running multiple MCEs
+## the reaping of its children, especially when running multiple MCEs
 ## simultaneously.
 ##
 $SIG{CHLD} = 'DEFAULT' unless ($_is_MSWin32);
@@ -452,7 +452,7 @@ MCE::Signal - Temporary directory creation/cleanup & signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.515
+This document describes MCE::Signal version 1.516
 
 =head1 SYNOPSIS
 
