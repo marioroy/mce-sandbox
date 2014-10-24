@@ -5,7 +5,7 @@ MCE::Examples - A list of examples demonstrating Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.516
+This document describes MCE::Examples version 1.517
 
 =head1 DESCRIPTION
 

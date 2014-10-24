@@ -12,18 +12,19 @@ use warnings;
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.516'; $VERSION = eval $VERSION;
+our $VERSION = '1.517'; $VERSION = eval $VERSION;
 
 our @EXPORT_OK = qw( get_ncpu );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## The get_ncpu subroutine (largely adopted from Test::Smoke::Util.pm)
-## returns the number of available (online/active/enabled) CPUs.
+## The get_ncpu subroutine, largely adopted from Test::Smoke::Util.pm,
+## returns the number of logical (online/active/enabled) CPU cores;
+## never smaller than one.
 ##
-## Defaults to 1. A warning is emitted to STDERR when it cannot recognize
-## the operating system or the external command failed.
+## A warning is emitted to STDERR when it cannot recognize the operating
+## system or the external command failed.
 ##
 ###############################################################################
 
@@ -50,7 +51,7 @@ sub get_ncpu {
          last OS_CHECK;
       };
 
-      /(?:darwin|.*bsd)/i && do {
+      /bsd|darwin|dragonfly/i && do {
          chomp( my @output = `sysctl -n hw.ncpu 2>/dev/null` );
          $ncpu = $output[0] if @output;
          last OS_CHECK;
@@ -68,7 +69,7 @@ sub get_ncpu {
       };
 
       /hp-?ux/i && do {
-         my $count = grep /^processor/ => `ioscan -fnkC processor 2>/dev/null`;
+         my $count = grep /^processor/ => `ioscan -fkC processor 2>/dev/null`;
          $ncpu = $count if $count;
          last OS_CHECK;
       };
@@ -79,21 +80,25 @@ sub get_ncpu {
          last OS_CHECK;
       };
 
-      /solaris|sunos|osf/i && do {
-         my $count = grep /on-line/ => `psrinfo 2>/dev/null`;
-         $ncpu = $count if $count;
+      /osf|solaris|sunos|svr5|sco/i && do {
+         if (-x '/usr/sbin/psrinfo') {
+            my $count = grep /on-?line/ => `psrinfo 2>/dev/null`;
+            $ncpu = $count if $count;
+         }
+         else {
+            my @output = grep /^NumCPU = \d+/ => `uname -X 2>/dev/null`;
+            $ncpu = (split " ", $output[0])[2] if @output;
+         }
          last OS_CHECK;
       };
 
-      /mswin32|mingw|cygwin/i && do {
+      /mswin|mingw|cygwin/i && do {
          $ncpu = $ENV{NUMBER_OF_PROCESSORS}
             if exists $ENV{NUMBER_OF_PROCESSORS};
          last OS_CHECK;
       };
 
-      _croak(
-         "MCE::Util::get_ncpu: command failed or unknown operating system\n"
-      );
+      warn "MCE::Util::get_ncpu: command failed or unknown operating system\n";
    }
 
    return $g_ncpu = $ncpu;
@@ -104,17 +109,6 @@ sub get_ncpu {
 ## Private methods.
 ##
 ###############################################################################
-
-sub _croak {
-
-   unless (defined $MCE::VERSION) {
-      $\ = undef; require Carp; goto &Carp::croak;
-   } else {
-      goto &MCE::_croak;
-   }
-
-   return;
-}
 
 sub _parse_max_workers {
 
@@ -233,7 +227,7 @@ MCE::Util - Public and private utility functions for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.516
+This document describes MCE::Util version 1.517
 
 =head1 SYNOPSIS
 
@@ -241,12 +235,13 @@ This document describes MCE::Util version 1.516
 
 =head1 DESCRIPTION
 
-This is a utility module for MCE. Nothing is exported by default. Exportable
-is get_ncpu.
+A utility module for MCE. Nothing is exported by default. Exportable is
+get_ncpu.
 
 =head2 get_ncpu()
 
-Returns the number of available (online/active/enabled) CPUs.
+Returns the number of logical (online/active/enabled) CPU cores; never smaller
+than one.
 
  my $ncpu = MCE::Util::get_ncpu();
 
