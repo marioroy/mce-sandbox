@@ -11,7 +11,7 @@ use warnings;
 
 use MCE;
 
-our $VERSION = '1.518'; $VERSION = eval $VERSION;
+our $VERSION = '1.519'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -193,7 +193,7 @@ MCE::Subs - Exports functions mapped directly to MCE methods
 
 =head1 VERSION
 
-This document describes MCE::Subs version 1.518
+This document describes MCE::Subs version 1.519
 
 =head1 SYNOPSIS
 

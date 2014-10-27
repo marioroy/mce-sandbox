@@ -11,7 +11,7 @@
 
 package MCE::Core::Worker;
 
-our $VERSION = '1.518'; $VERSION = eval $VERSION;
+our $VERSION = '1.519'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -616,6 +616,13 @@ sub _worker_main {
    $self->{_task_wid}   = (defined $_task_wid) ? $_task_wid : $_wid;
    $self->{_task}       = $_task;
    $self->{_wid}        = $_wid;
+
+   ## Unset the need for channel locking if only worker riding the channel.
+   if ($self->{_init_total_workers} < DATA_CHANNELS * 2) {
+      if ($_wid > $self->{_init_total_workers} % DATA_CHANNELS) {
+         $self->{_lock_chn} = 0 if ($_wid <= DATA_CHANNELS);
+      }
+   }
 
    my ($_COM_LOCK, $_DAT_LOCK);
    my $_lock_chn = $self->{_lock_chn};

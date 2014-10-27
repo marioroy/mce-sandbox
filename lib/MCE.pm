@@ -29,7 +29,7 @@ use Time::HiRes qw( time );
 use MCE::Signal;
 use bytes;
 
-our $VERSION = '1.518'; $VERSION = eval $VERSION;
+our $VERSION = '1.519'; $VERSION = eval $VERSION;
 
 our (%_valid_fields_new, %_params_allowed_args, %_valid_fields_task);
 our ($_is_cygwin, $_is_MSWin32, $_is_WinEnv);
@@ -54,7 +54,7 @@ BEGIN {
    ## _chunk_id _mce_sid _mce_tid _pids _run_mode _single_dim _thrs _tids _wid
    ## _exiting _exit_pid _total_exited _total_running _total_workers _task_wid
    ## _send_cnt _sess_dir _spawned _state _status _task _task_id _wrk_status
-   ## _last_sref
+   ## _last_sref _init_total_workers
    ##
    ## _bsb_r_sock _bsb_w_sock _bse_r_sock _bse_w_sock _com_r_sock _com_w_sock
    ## _dat_r_sock _dat_w_sock _que_r_sock _que_w_sock _data_channels _lock_chn
@@ -605,6 +605,7 @@ sub spawn {
 
    if (!defined $self->{user_tasks}) {
       $self->{_total_workers} = $_max_workers;
+      $self->{_init_total_workers} = $_max_workers;
 
       if (defined $_use_threads && $_use_threads == 1) {
          _dispatch_thread($self, $_) for (1 .. $_max_workers);
@@ -629,6 +630,8 @@ sub spawn {
 
       $self->{_total_workers} += $_->{max_workers}
          for (@{ $self->{user_tasks} });
+
+      $self->{_init_total_workers} = $self->{_total_workers};
 
       for my $_task (@{ $self->{user_tasks} }) {
          my $_use_threads = $_task->{use_threads};

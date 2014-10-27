@@ -5,7 +5,7 @@ MCE::Examples - A list of examples demonstrating Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.518
+This document describes MCE::Examples version 1.519
 
 =head1 DESCRIPTION
 
@@ -32,6 +32,10 @@ count aggregation.
    cat.pl    Concatenation script, similar to the cat binary.
    egrep.pl  Egrep script, similar to the egrep binary.
    wc.pl     Word count script, similar to the wc binary.
+
+   files_flow.pl, files_mce.pl, files_thr.pl
+             Demonstrates MCE::Flow, MCE::Queue, and Thread::Queue.
+             See the MCE::Queue synopsis for another variation.
 
    findnull.pl
              A parallel script for reporting lines containing null

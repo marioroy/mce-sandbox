@@ -14,7 +14,7 @@ use Socket qw( :crlf PF_UNIX PF_UNSPEC SOCK_STREAM );
 use Scalar::Util qw( looks_like_number );
 use bytes;
 
-our $VERSION = '1.518'; $VERSION = eval $VERSION;
+our $VERSION = '1.519'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -1675,7 +1675,7 @@ MCE::Queue - Hybrid queues (normal including priority) for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.518
+This document describes MCE::Queue version 1.519
 
 =head1 SYNOPSIS
 
@@ -1698,6 +1698,8 @@ This document describes MCE::Queue version 1.518
          max_workers => 1, task_name => 'dir',
 
          user_func => sub {
+            ## Create a "standalone queue" only accessable to this worker.
+            ## See included examples for running with multiple workers.
             my $D = MCE::Queue->new(queue => [ MCE->user_args->[0] ]);
 
             while (defined (my $dir = $D->dequeue_nb)) {
@@ -1729,20 +1731,20 @@ This document describes MCE::Queue version 1.518
       time ./files_mce.pl /usr 1 | wc -l
       time ./files_thr.pl /usr   | wc -l
 
-   Darwin (OS)    /usr:  216,271 files
-      MCE::Queue, fast => 0 :  4.85s
-      MCE::Queue, fast => 1 :  2.86s
-      Thread::Queue         :  4.72s
+   Darwin (OS)    /usr:    216,271 files
+      MCE::Queue, fast => 0 :    4.17s
+      MCE::Queue, fast => 1 :    2.62s
+      Thread::Queue         :    4.14s
 
-   Linux (VM)     /usr:  185,115 files
-      MCE::Queue, fast => 0 : 13.46s
-      MCE::Queue, fast => 1 :  4.11s
-      Thread::Queue         :  6.40s
+   Linux (VM)     /usr:    186,154 files
+      MCE::Queue, fast => 0 :   12.57s
+      MCE::Queue, fast => 1 :    3.36s
+      Thread::Queue         :    5.91s
 
-   Solaris (VM)   /usr:  603,051 files
-      MCE::Queue, fast => 0 : 39.60s
-      MCE::Queue, fast => 1 : 17.51s
-      Thread::Queue    * Perl not built to support threads
+   Solaris (VM)   /usr:    603,051 files
+      MCE::Queue, fast => 0 :   39.04s
+      MCE::Queue, fast => 1 :   18.08s
+      Thread::Queue      * Perl not built to support threads
 
 =head1 DESCRIPTION
 
@@ -2043,8 +2045,7 @@ when requesting the number of items to dequeue.
 
 =item L<Parallel-DataPipe>
 
-The idea for the recursive synopsis used in this document came from reading
-the example listed in this module's documentation.
+The idea for a queue recursion example came from reading this sysnopsis.
 
 =back
 
