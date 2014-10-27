@@ -12,7 +12,7 @@ use warnings;
 use Fcntl qw( :flock O_RDONLY );
 use base qw( Exporter );
 
-our $VERSION = '1.517'; $VERSION = eval $VERSION;
+our $VERSION = '1.518'; $VERSION = eval $VERSION;
 
 our ($has_threads, $main_proc_id, $prog_name);
 our ($display_die_with_localtime, $display_warn_with_localtime);
@@ -82,7 +82,7 @@ sub import {
  # setpgrp(0,0) if ($_no_setpgrp == 0 && $^O ne 'MSWin32');
 
    ## Sets the current process group for the current process.
-   setpgrp($main_proc_id, 0) if ($_setpgrp == 1 && $^O ne 'MSWin32');
+   setpgrp(0,0) if ($_setpgrp == 1 && $^O ne 'MSWin32');
 
    my ($_tmp_dir_base, $_count);
 
@@ -452,7 +452,7 @@ MCE::Signal - Temporary directory creation/cleanup & signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.517
+This document describes MCE::Signal version 1.518
 
 =head1 SYNOPSIS
 

@@ -14,7 +14,7 @@ use Socket qw( :crlf PF_UNIX PF_UNSPEC SOCK_STREAM );
 use Scalar::Util qw( looks_like_number );
 use bytes;
 
-our $VERSION = '1.517'; $VERSION = eval $VERSION;
+our $VERSION = '1.518'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -26,6 +26,7 @@ our ($HIGHEST, $LOWEST, $FIFO, $LILO, $LIFO, $FILO) = (1, 0, 1, 1, 0, 0);
 
 our $PORDER  = $HIGHEST;
 our $TYPE    = $FIFO;
+our $FAST    = 0;
 
 my $_loaded;
 
@@ -48,6 +49,13 @@ sub import {
             if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
 
          $MCE::Queue::TYPE = shift;
+         next;
+      }
+      if ( $_arg =~ /^fast$/i ) {
+         _croak("MCE::Queue::import: 'FAST' must be 1 or 0")
+            if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
+
+         $MCE::Queue::FAST = shift;
          next;
       }
 
@@ -86,6 +94,8 @@ sub import {
 
 use constant {
 
+   MAX_DQ_DEPTH => 192,               ## Maximum dequeue notifications allowed
+
    OUTPUT_C_QUE => 'C~QUE',           ## Clear the queue
 
    OUTPUT_A_QUE => 'A~QUE',           ## Enqueue into queue (array)
@@ -114,7 +124,7 @@ use constant {
 ## _datp _datq _heap _id _nb_flag _qr_sock _qw_sock _standalone _porder _type
 
 my %_valid_fields_new = map { $_ => 1 } qw(
-   gather porder queue type
+   gather porder queue type fast
 );
 
 my $_queues = {};
@@ -171,6 +181,9 @@ sub new {
    $_queue->{_type} = (exists $argv{type} && defined $argv{type})
       ? $argv{type} : $MCE::Queue::TYPE;
 
+   $_queue->{_fast} = (exists $argv{fast} && defined $argv{fast})
+      ? $argv{fast} : $MCE::Queue::FAST;
+
    ## -------------------------------------------------------------------------
 
    _croak("MCE::Queue::new: 'porder' must be 1 or 0")
@@ -178,6 +191,9 @@ sub new {
 
    _croak("MCE::Queue::new: 'type' must be 1 or 0")
       if ($_queue->{_type} ne '1' && $_queue->{_type} ne '0');
+
+   _croak("MCE::Queue::new: 'fast' must be 1 or 0")
+      if ($_queue->{_fast} ne '1' && $_queue->{_fast} ne '0');
 
    if (exists $argv{queue}) {
       _croak("MCE::Queue::new: 'queue' is not an ARRAY reference")
@@ -201,6 +217,7 @@ sub new {
    if (defined $MCE::VERSION) {
       if (MCE->wid == 0) {
          $_queue->{_id} = ++$_id; $_queues->{$_id} = $_queue;
+         $_queue->{_desem} = 0 if ($_queue->{_fast});
 
          socketpair( $_queue->{_qr_sock}, $_queue->{_qw_sock},
             PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
@@ -561,7 +578,7 @@ sub _heap_insert_high {
 
 {
    my ($_MCE, $_DAU_R_SOCK_REF, $_DAU_R_SOCK, $_c, $_i, $_id);
-   my ($_len, $_p, $_queue);
+   my ($_len, $_p, $_queue, $_pending);
 
    my %_output_function = (
 
@@ -730,16 +747,49 @@ sub _heap_insert_high {
 
          $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
 
-         chomp($_c  = <$_DAU_R_SOCK>);
+         chomp($_c  = <$_DAU_R_SOCK>); $_c = 0 if ($_c == 1);
          chomp($_id = <$_DAU_R_SOCK>);
 
          $_queue = $_queues->{$_id};
 
-         if ($_c == 1) {
-            my $_buffer = $_queue->_dequeue();
+         my (@_items, $_buffer);
 
+         if ($_c) {
+            push(@_items, $_queue->_dequeue()) for (1 .. $_c);
+         } else {
+            $_buffer = $_queue->_dequeue();
+         }
+
+         if ($_queue->{_fast}) {
+            ## The 'fast' option may reduce wait time, thus run faster
+            if ($_queue->{_desem} <= 1) {
+               $_pending = $_queue->_pending();
+               $_pending = int($_pending / $_c) if ($_c);
+               if ($_pending) {
+                  $_pending = MAX_DQ_DEPTH if ($_pending > MAX_DQ_DEPTH);
+                  syswrite $_queue->{_qw_sock}, $LF x $_pending;
+               }
+               $_queue->{_desem} = $_pending;
+            }
+            else {
+               $_queue->{_desem} -= 1;
+            }
+         }
+         else {
+            ## Otherwise, never to exceed one byte in the channel
             syswrite $_queue->{_qw_sock}, $LF if ($_queue->_has_data());
+         }
 
+         if ($_c) {
+            unless (defined $_items[0]) {
+               print $_DAU_R_SOCK -1 . $LF;
+            }
+            else {
+               $_buffer = $_MCE->{freeze}(\@_items);
+               print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+            }
+         }
+         else {
             unless (defined $_buffer) {
                print $_DAU_R_SOCK -1 . $LF;
             }
@@ -749,19 +799,6 @@ sub _heap_insert_high {
                } else {
                   $_buffer .= '0';
                }
-               print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
-            }
-         }
-         else {
-            my @_items; push(@_items, $_queue->_dequeue()) for (1 .. $_c);
-
-            syswrite $_queue->{_qw_sock}, $LF if ($_queue->_has_data());
-
-            unless (defined $_items[0]) {
-               print $_DAU_R_SOCK -1 . $LF;
-            }
-            else {
-               my $_buffer = $_MCE->{freeze}(\@_items);
                print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
             }
          }
@@ -1023,10 +1060,15 @@ sub _mce_m_clear {
 
    my $_next; my $_queue = shift;
 
-   sysread $_queue->{_qr_sock}, $_next, 1
-      if ($_queue->_has_data());
+   if ($_queue->{_fast}) {
+      warn "MCE::Queue: 'clear' not allowed for 'fast => 1' option\n";
+   }
+   else {
+      sysread $_queue->{_qr_sock}, $_next, 1
+         if ($_queue->_has_data());
 
-   $_queue->_clear();
+      $_queue->_clear();
+   }
 
    return;
 }
@@ -1066,24 +1108,39 @@ sub _mce_m_enqueuep {
 
 sub _mce_m_dequeue {
 
-   my $_next; my $_queue = $_[0];
+   my (@_items, $_buffer, $_c, $_next, $_pending); my $_queue = $_[0];
 
    sysread $_queue->{_qr_sock}, $_next, 1;        ## Wait here
 
    if (defined $_[1] && $_[1] ne '1') {
-      my @_items = $_queue->_dequeue($_[1]);
-
-      syswrite $_queue->{_qw_sock}, $LF if ($_queue->_has_data());
-      $_queue->{_nb_flag} = 0;
-
-      return @_items;
+      $_c = $_[1]; @_items = $_queue->_dequeue($_c);
+   } else {
+      $_buffer = $_queue->_dequeue();
    }
 
-   my $_buffer = $_queue->_dequeue();
+   if ($_queue->{_fast}) {
+      ## The 'fast' option may reduce wait time, thus run faster
+      if ($_queue->{_desem} <= 1) {
+         $_pending = $_queue->_pending();
+         $_pending = int($_pending / $_c) if (defined $_c);
+         if ($_pending) {
+            $_pending = MAX_DQ_DEPTH if ($_pending > MAX_DQ_DEPTH);
+            syswrite $_queue->{_qw_sock}, $LF x $_pending;
+         }
+         $_queue->{_desem} = $_pending;
+      }
+      else {
+         $_queue->{_desem} -= 1;
+      }
+   }
+   else {
+      ## Otherwise, never to exceed one byte in the channel
+      syswrite $_queue->{_qw_sock}, $LF if ($_queue->_has_data());
+   }
 
-   syswrite $_queue->{_qw_sock}, $LF if ($_queue->_has_data());
    $_queue->{_nb_flag} = 0;
 
+   return @_items if (defined $_c);
    return $_buffer;
 }
 
@@ -1091,10 +1148,16 @@ sub _mce_m_dequeue_nb {
 
    my $_queue = $_[0];
 
-   $_queue->{_nb_flag} = 1;
+   if ($_queue->{_fast}) {
+      warn "MCE::Queue: 'dequeue_nb' not allowed for 'fast => 1' option\n";
+      return;
+   }
+   else {
+      $_queue->{_nb_flag} = 1;
 
-   return (defined $_[1] && $_[1] ne '1')
-      ? $_queue->_dequeue($_[1]) : $_queue->_dequeue();
+      return (defined $_[1] && $_[1] ne '1')
+         ? $_queue->_dequeue($_[1]) : $_queue->_dequeue();
+   }
 }
 
 ## ----------------------------------------------------------------------------
@@ -1189,15 +1252,20 @@ sub _mce_m_insertp {
       return $_queue->_clear()
          if (exists $_queue->{_standalone});
 
-      local $\ = undef if (defined $\);
-      local $/ = $LF if (!$/ || $/ ne $LF);
+      if ($_queue->{_fast}) {
+         warn "MCE::Queue: 'clear' not allowed for 'fast => 1' option\n";
+      }
+      else {
+         local $\ = undef if (defined $\);
+         local $/ = $LF if (!$/ || $/ ne $LF);
 
-      flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-      print $_DAT_W_SOCK OUTPUT_C_QUE . $LF . $_chn . $LF;
-      print $_DAU_W_SOCK $_queue->{_id} . $LF;
+         flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
+         print $_DAT_W_SOCK OUTPUT_C_QUE . $LF . $_chn . $LF;
+         print $_DAU_W_SOCK $_queue->{_id} . $LF;
 
-      <$_DAU_W_SOCK>;
-      flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+         <$_DAU_W_SOCK>;
+         flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+      }
 
       return;
    }
@@ -1336,6 +1404,11 @@ sub _mce_m_insertp {
 
       return $_queue->_dequeue(@_)
          if (exists $_queue->{_standalone});
+
+      if ($_queue->{_fast}) {
+         warn "MCE::Queue: 'dequeue_nb' not allowed for 'fast => 1' option\n";
+         return;
+      }
 
       if (defined $_[0] && $_[0] ne '1') {
          $_c = $_[0];
@@ -1602,72 +1675,74 @@ MCE::Queue - Hybrid queues (normal including priority) for Many-core Engine
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.517
+This document describes MCE::Queue version 1.518
 
 =head1 SYNOPSIS
 
    use MCE;
    use MCE::Queue;
 
-   my @dirs = (".");
-
-   my $D = MCE::Queue->new( queue => \@dirs );
-   my $F = MCE::Queue->new();
-
-   ## Notice the use of dequeue_nb (non-blocking) for the initial
-   ## task and dequeue for the task afterwards. The first task is
-   ## recursive.
+   my $F = MCE::Queue->new(fast => 1);
+   my $consumers = 8;
 
    my $mce = MCE->new(
 
+      task_end => sub {
+         my ($mce, $task_id, $task_name) = @_;
+
+         $F->enqueue((undef) x $consumers)
+            if $task_name eq 'dir';
+      },
+
       user_tasks => [{
-         max_workers => 4,
-
-         task_end => sub {
-
-            ## Signal workers no more work remains. The number 4
-            ## indicates the numbers of workers for the 2nd task
-            ## performing the read.
-
-            $F->enqueue((undef) x 4);
-         },
+         max_workers => 1, task_name => 'dir',
 
          user_func => sub {
+            my $D = MCE::Queue->new(queue => [ MCE->user_args->[0] ]);
 
-            ## Pause briefly to allow time for wid 1 to add items.
-            select(undef, undef, undef, 0.05) if (MCE->task_wid > 1);
-
-            ## Worker will loop until no more directories.
-            while (defined (local $_ = $D->dequeue_nb)) {
-               my ($files, $dirs) = part { -d $_ ? 1 : 0 } glob("$_/*");
-
-               $D->enqueue(@$dirs ) if defined $dirs;
-               $F->enqueue(@$files) if defined $files;
+            while (defined (my $dir = $D->dequeue_nb)) {
+               my (@files, @dirs); foreach (glob("$dir/*")) {
+                  if (-d $_) { push @dirs, $_; next; }
+                  push @files, $_;
+               }
+               $D->enqueue(@dirs ) if scalar @dirs;
+               $F->enqueue(@files) if scalar @files;
             }
-
-            MCE->say("STDERR", "(D) worker has ended");
-
-            return;
          }
-
       },{
-         max_workers => 4,
+         max_workers => $consumers, task_name => 'file',
 
          user_func => sub {
-
-            ## Worker will loop until no more files.
-            while (defined (local $_ = $F->dequeue)) {
-               MCE->say($_);
+            while (defined (my $file = $F->dequeue)) {
+               MCE->say($file);
             }
-
-            MCE->say("STDERR", "(F) worker has ended");
-
-            return;
          }
       }]
-   );
 
-   $mce->run;
+   )->run({ user_args => [ $ARGV[0] || '.' ] });
+
+   __END__
+
+   Results from files_mce.pl and files_thr.pl; included with MCE.
+   Usage:
+      time ./files_mce.pl /usr 0 | wc -l
+      time ./files_mce.pl /usr 1 | wc -l
+      time ./files_thr.pl /usr   | wc -l
+
+   Darwin (OS)    /usr:  216,271 files
+      MCE::Queue, fast => 0 :  4.85s
+      MCE::Queue, fast => 1 :  2.86s
+      Thread::Queue         :  4.72s
+
+   Linux (VM)     /usr:  185,115 files
+      MCE::Queue, fast => 0 : 13.46s
+      MCE::Queue, fast => 1 :  4.11s
+      Thread::Queue         :  6.40s
+
+   Solaris (VM)   /usr:  603,051 files
+      MCE::Queue, fast => 0 : 39.60s
+      MCE::Queue, fast => 1 : 17.51s
+      Thread::Queue    * Perl not built to support threads
 
 =head1 DESCRIPTION
 
@@ -1702,11 +1777,12 @@ while running.
 
 =head1 IMPORT
 
-Two options are available for overriding the default value used when creating
-new queues (porder applies to priority queues only).
+Three options are available for overriding the default value for new queues
+(porder applies to priority queues only).
 
    use MCE::Queue porder => $MCE::Queue::HIGHEST,
-                  type   => $MCE::Queue::FIFO;
+                  type   => $MCE::Queue::FIFO,
+                  fast   => 0;
 
    use MCE::Queue;       ## same as above
 
@@ -1759,9 +1835,14 @@ Essentially, the MCE module is not a prerequisite for using MCE::Queue.
 
 =item ->new ( [ queue => \@array ] )
 
-This creates a new queue. Available options are queue, porder, type, and
+This creates a new queue. Available options are queue, porder, type, fast, and
 gather. The gather option is mainly for running with MCE and wanting to pass
 item(s) to a callback function for adding to the queue.
+
+The 'fast' option speeds up ->dequeue ops and not enabled by default. It is
+beneficial for queues not calling ->clear or ->dequeue_nb and not altering the
+optional count value while running; e.g. ->dequeue($count). Basically, do not
+enable 'fast' if varying $count dynamically.
 
    use MCE;
    use MCE::Queue;
@@ -1774,6 +1855,8 @@ item(s) to a callback function for adding to the queue.
 
    my $q5 = MCE::Queue->new( type => $MCE::Queue::FIFO );
    my $q6 = MCE::Queue->new( type => $MCE::Queue::LIFO );
+
+   my $q7 = MCE::Queue->new( fast => 1 );
 
 Multiple queues may point to the same callback function. Please note that the
 first argument for the callback function is the queue object itself.
