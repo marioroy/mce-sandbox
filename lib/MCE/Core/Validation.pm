@@ -11,7 +11,7 @@
 
 package MCE::Core::Validation;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -33,7 +33,7 @@ no warnings 'threads'; no warnings 'uninitialized';
 
 sub _validate_args {
 
-   my MCE $_s = $_[0];
+   my $_s = $_[0];
 
    die "Private method called" unless (caller)[0]->isa( ref($_s) );
 
@@ -102,8 +102,7 @@ sub _validate_args {
 
 sub _validate_args_s {
 
-   my MCE $self = $_[0];
-   my $_s       = $_[1] || $self;
+   my $self = $_[0]; my $_s = $_[1] || $self;
 
    @_ = ();
 
@@ -222,7 +221,7 @@ sub _validate_args_s {
 
 sub _validate_runstate {
 
-   my MCE $self = $_[0]; my $_tag = $_[1];
+   my $self = $_[0]; my $_tag = $_[1];
 
    _croak("$_tag: method cannot be called by the worker process")
       if ($self->{_wid});

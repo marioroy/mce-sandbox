@@ -11,7 +11,7 @@
 
 package MCE::Core::Manager;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -35,7 +35,7 @@ no warnings 'threads'; no warnings 'uninitialized';
 
 sub _task_end {
 
-   my MCE $self = $_[0]; my $_task_id = $_[1];
+   my $self = $_[0]; my $_task_id = $_[1];
 
    if (defined $self->{user_tasks}) {
       my $_task_end = (exists $self->{user_tasks}->[$_task_id]->{task_end})
@@ -65,7 +65,7 @@ sub _task_end {
 
 sub _output_loop {
 
-   my MCE $self = $_[0]; my $_input_data = $_[1]; my $_input_glob = $_[2];
+   my $self = $_[0]; my $_input_data = $_[1]; my $_input_glob = $_[2];
 
    my $_plugin_function   = $_[3];
    my $_plugin_loop_begin = $_[4];

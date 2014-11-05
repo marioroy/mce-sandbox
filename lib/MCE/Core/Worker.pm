@@ -11,7 +11,7 @@
 
 package MCE::Core::Worker;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -111,7 +111,7 @@ END {
 
    sub _do_callback {
 
-      my $_buffer; my MCE $self = $_[0]; $_value = $_[1]; $_data_ref = $_[2];
+      my $_buffer; my $self = $_[0]; $_value = $_[1]; $_data_ref = $_[2];
 
       @_ = ();
 
@@ -191,9 +191,7 @@ END {
 
    sub _do_gather {
 
-      my MCE $self  = $_[0];
-      my $_data_ref = $_[1];
-      my $_buffer;
+      my $_buffer; my $self = $_[0]; my $_data_ref = $_[1];
 
       return unless (scalar @{ $_data_ref });
 
@@ -232,8 +230,7 @@ END {
 
    sub _do_send {
 
-      my MCE $self = shift; $_dest = shift; $_value = shift;
-      my $_buffer;
+      my $_buffer; my $self = shift; $_dest = shift; $_value = shift;
 
       if (@_ > 1) {
          $_buffer = join('', @_);
@@ -258,7 +255,7 @@ END {
 
    sub _do_send_glob {
 
-      my MCE $self  = $_[0]; my $_glob = $_[1]; my $_fd = $_[2];
+      my $self = $_[0]; my $_glob = $_[1]; my $_fd = $_[2];
       my $_data_ref = $_[3];
 
       if ($self->{_wid} > 0) {
@@ -281,7 +278,7 @@ END {
 
    sub _do_send_init {
 
-      my MCE $self = $_[0];
+      my $self = $_[0];
 
       @_ = ();
 
@@ -302,9 +299,7 @@ END {
 
    sub _do_user_func {
 
-      my MCE $self  = $_[0];
-      my $_chunk    = $_[1];
-      my $_chunk_id = $_[2];
+      my $self = $_[0]; my $_chunk = $_[1]; my $_chunk_id = $_[2];
 
       $self->{_chunk_id} = $_chunk_id;
 
@@ -315,7 +310,7 @@ END {
 
    sub _do_user_func_init {
 
-      my MCE $self = $_[0];
+      my $self = $_[0];
 
       $_user_func = $self->{user_func};
 
@@ -331,7 +326,7 @@ END {
 
 sub _worker_do {
 
-   my MCE $self = $_[0]; my $_params_ref = $_[1];
+   my $self = $_[0]; my $_params_ref = $_[1];
 
    @_ = ();
 
@@ -456,7 +451,7 @@ sub _worker_do {
 
 sub _worker_loop {
 
-   my MCE $self = $_[0];
+   my $self = $_[0];
 
    @_ = ();
 
@@ -549,7 +544,7 @@ sub _worker_loop {
 
 sub _worker_main {
 
-   my MCE $self = $_[0]; my $_wid      = $_[1]; my $_task   = $_[2];
+   my $self     = $_[0]; my $_wid      = $_[1]; my $_task   = $_[2];
    my $_task_id = $_[3]; my $_task_wid = $_[4]; my $_params = $_[5];
 
    my $_plugin_worker_init = $_[6];
@@ -679,6 +674,9 @@ sub _worker_main {
    ## Wait until MCE completes exit notification.
    $SIG{__DIE__} = $SIG{__WARN__} = sub { };
 
+   select STDERR; $| = 1;
+   select STDOUT; $| = 1;
+
    eval {
       my $_c; sysread $self->{_bse_r_sock}, $_c, 1;
    };
@@ -690,9 +688,6 @@ sub _worker_main {
    }
 
    close $_COM_LOCK; undef $_COM_LOCK;
-
-   select STDERR; $| = 1;
-   select STDOUT; $| = 1;
 
    return;
 }

@@ -16,7 +16,7 @@ use MCE::Util;
 
 use MCE::Queue;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -27,6 +27,7 @@ our $VERSION = '1.519'; $VERSION = eval $VERSION;
 our $DEFAULT_MODE = 'map';
 our $MAX_WORKERS  = 'auto';
 our $CHUNK_SIZE   = 'auto';
+our $FAST         = 0;
 
 my ($_params, @_prev_c, @_prev_m, @_prev_n, @_prev_w, @_user_tasks, @_queue);
 my ($_MCE, $_loaded); my $_tag = 'MCE::Stream';
@@ -45,6 +46,10 @@ sub import {
       $MCE::FREEZE  = shift and next if ( $_arg =~ /^freeze$/i );
       $MCE::THAW    = shift and next if ( $_arg =~ /^thaw$/i );
 
+      if ( $_arg =~ /^fast$/i ) {
+         $FAST = 1 if (shift eq '1');
+         next;
+      }
       if ( $_arg =~ /^sereal$/i ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
@@ -401,7 +406,9 @@ sub mce_stream (@) {
       $_MCE->shutdown() if (defined $_MCE);
 
       pop( @_queue )->DESTROY for (@_code .. @_queue);
-      push @_queue, MCE::Queue->new for (@_queue .. @_code - 2);
+
+      push @_queue, MCE::Queue->new(fast => $FAST)
+         for (@_queue .. @_code - 2);
 
       _gen_user_tasks(\@_queue, \@_code, \@_mode, \@_name, \@_wrks);
 
@@ -609,7 +616,7 @@ MCE::Stream - Parallel stream model for chaining multiple maps and greps
 
 =head1 VERSION
 
-This document describes MCE::Stream version 1.519
+This document describes MCE::Stream version 1.520
 
 =head1 SYNOPSIS
 
@@ -706,12 +713,13 @@ The following list 6 options which may be overridden when loading the module.
    use Sereal qw(encode_sereal decode_sereal);
 
    use MCE::Stream
-         default_mode => 'grep',               ## Default 'map'
-         max_workers  => 8,                    ## Default 'auto'
-         chunk_size   => 500,                  ## Default 'auto'
-         tmp_dir      => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
-         freeze       => \&encode_sereal,      ## \&Storable::freeze
-         thaw         => \&decode_sereal       ## \&Storable::thaw
+         default_mode => 'grep',              ## Default 'map'
+         max_workers  => 8,                   ## Default 'auto'
+         chunk_size   => 500,                 ## Default 'auto'
+         fast         => 1,                   ## Default 0 (fast queue?)
+         tmp_dir      => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
+         freeze       => \&encode_sereal,     ## \&Storable::freeze
+         thaw         => \&decode_sereal      ## \&Storable::thaw
    ;
 
 There is a simpler way to enable Sereal with MCE 1.5. The following will

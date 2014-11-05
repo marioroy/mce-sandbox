@@ -11,7 +11,7 @@
 
 package MCE::Core::Input::Handle;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -38,7 +38,7 @@ my $_que_template  = $MCE::_que_template;
 
 sub _worker_read_handle {
 
-   my MCE $self = $_[0]; my $_proc_type = $_[1]; my $_input_data = $_[2];
+   my $self = $_[0]; my $_proc_type = $_[1]; my $_input_data = $_[2];
 
    @_ = ();
 

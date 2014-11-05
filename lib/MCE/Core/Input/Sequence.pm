@@ -11,7 +11,7 @@
 
 package MCE::Core::Input::Sequence;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -36,7 +36,7 @@ my $_que_template  = $MCE::_que_template;
 
 sub _worker_sequence_queue {
 
-   my MCE $self = $_[0];
+   my $self = $_[0];
 
    @_ = ();
 

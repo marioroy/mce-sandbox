@@ -29,7 +29,7 @@ use Time::HiRes qw( time );
 use MCE::Signal;
 use bytes;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 our (%_valid_fields_new, %_params_allowed_args, %_valid_fields_task);
 our ($_is_cygwin, $_is_MSWin32, $_is_WinEnv);
@@ -90,19 +90,19 @@ BEGIN {
 
    foreach my $_id (qw( chunk_size max_workers task_name tmp_dir user_args )) {
       *{ $_id } = sub () {
-         my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+         my $x = shift; my $self = ref($x) ? $x : $MCE;
          return $self->{$_id};
       };
    }
    foreach my $_id (qw( chunk_id sess_dir task_id task_wid wid )) {
       *{ $_id } = sub () {
-         my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+         my $x = shift; my $self = ref($x) ? $x : $MCE;
          return $self->{"_$_id"};
       };
    }
    foreach my $_id (qw( freeze thaw )) {
       *{ $_id } = sub () {
-         my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+         my $x = shift; my $self = ref($x) ? $x : $MCE;
          return $self->{$_id}(@_);
       };
    }
@@ -493,7 +493,7 @@ sub new {
 
 sub spawn {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    ## To avoid leaking (Scalars leaked: 1) messages (fixed in Perl 5.12.x).
    @_ = ();
@@ -696,7 +696,7 @@ sub spawn {
 
 sub forchunk {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
    my $_input_data = $_[0];
 
    _validate_runstate($self, "MCE::forchunk");
@@ -726,7 +726,7 @@ sub forchunk {
 
 sub foreach {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
    my $_input_data = $_[0];
 
    _validate_runstate($self, "MCE::foreach");
@@ -757,7 +757,7 @@ sub foreach {
 
 sub forseq {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
    my $_sequence = $_[0];
 
    _validate_runstate($self, "MCE::forseq");
@@ -793,7 +793,7 @@ sub forseq {
 
 sub process {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _validate_runstate($self, "MCE::process");
 
@@ -830,7 +830,7 @@ sub process {
 
 sub restart_worker {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::restart_worker: method cannot be called by the worker process")
       if ($self->{_wid});
@@ -875,7 +875,7 @@ sub restart_worker {
 
 sub run {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::run: method cannot be called by the worker process")
       if ($self->{_wid});
@@ -1170,7 +1170,7 @@ sub run {
 
 sub send {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::send: method cannot be called by the worker process")
       if ($self->{_wid});
@@ -1240,7 +1240,7 @@ sub send {
 
 sub shutdown {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    @_ = ();
 
@@ -1366,7 +1366,7 @@ sub shutdown {
 
 sub sync {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::sync: method cannot be called by the manager process")
       unless ($self->{_wid});
@@ -1413,7 +1413,7 @@ sub sync {
 
 sub yield {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    return unless ($self->{_i_wrk_st});
    return unless ($self->{_task_wid});
@@ -1442,7 +1442,7 @@ sub yield {
 
 sub abort {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    my $_QUE_R_SOCK = $self->{_que_r_sock};
    my $_QUE_W_SOCK = $self->{_que_w_sock};
@@ -1475,7 +1475,7 @@ sub abort {
 
 sub exit {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    my $_exit_status = (defined $_[0]) ? $_[0] : $?;
    my $_exit_msg    = (defined $_[1]) ? $_[1] : '';
@@ -1528,14 +1528,14 @@ sub exit {
    ## Exit thread/child process.
    $SIG{__DIE__} = $SIG{__WARN__} = sub { };
 
+   select STDERR; $| = 1;
+   select STDOUT; $| = 1;
+
    if ($_lock_chn) {
       close $_DAT_LOCK; undef $_DAT_LOCK;
    }
 
    close $_COM_LOCK; undef $_COM_LOCK;
-
-   select STDERR; $| = 1;
-   select STDOUT; $| = 1;
 
    threads->exit($_exit_status)
       if ($_has_threads && threads->can('exit'));
@@ -1548,7 +1548,7 @@ sub exit {
 
 sub last {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::last: method cannot be called by the manager process")
       unless ($self->{_wid});
@@ -1562,7 +1562,7 @@ sub last {
 
 sub next {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::next: method cannot be called by the manager process")
       unless ($self->{_wid});
@@ -1577,7 +1577,7 @@ sub next {
 
 sub status {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::status: method cannot be called by the worker process")
       if ($self->{_wid});
@@ -1595,7 +1595,7 @@ sub status {
 
 sub do {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
    my $_callback = shift;
 
    _croak("MCE::do: method cannot be called by the manager process")
@@ -1612,7 +1612,7 @@ sub do {
 
 sub gather {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    _croak("MCE::gather: method cannot be called by the manager process")
       unless ($self->{_wid});
@@ -1635,7 +1635,7 @@ sub gather {
 
    sub sendto {
 
-      my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+      my $x = shift; my $self = ref($x) ? $x : $MCE;
       my $_to = shift;
 
       _croak("MCE::sendto: method cannot be called by the manager process")
@@ -1691,7 +1691,7 @@ sub gather {
 
 sub print {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    if (defined (my $_fd = fileno($_[0]))) {
       my $_glob = shift;
@@ -1716,7 +1716,7 @@ sub print {
 
 sub printf {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    if (defined (my $_fd = fileno($_[0]))) {
       my $_glob = shift; my $_fmt = shift || '%s';
@@ -1742,7 +1742,7 @@ sub printf {
 
 sub say {
 
-   my $x = shift; my MCE $self = ref($x) ? $x : $MCE;
+   my $x = shift; my $self = ref($x) ? $x : $MCE;
 
    if (defined (my $_fd = fileno($_[0]))) {
       my $_glob = shift;
@@ -1776,7 +1776,7 @@ sub say {
 
    sub _parse_max_workers {
 
-      my MCE $self = shift;
+      my $self = shift;
       return unless ($self);
 
       if ($self->{max_workers} =~ /^auto(?:$|\s*([\-\+\/\*])\s*(.+)$)/i) {
@@ -1821,8 +1821,8 @@ sub _NOOP { }
 
 sub _create_socket_pair {
 
-   my MCE $self = $_[0]; my $_r_sock = $_[1]; my $_w_sock = $_[2];
-   my $_i       = $_[3];
+   my $self = $_[0]; my $_r_sock = $_[1]; my $_w_sock = $_[2];
+   my $_i   = $_[3];
 
    @_ = (); local $!;
 
@@ -1882,7 +1882,7 @@ sub _sync_buffer_to_array {
 
 sub _sync_params {
 
-   my MCE $self = $_[0]; my $_params_ref = $_[1];
+   my $self = $_[0]; my $_params_ref = $_[1];
 
    @_ = ();
 
@@ -1929,7 +1929,7 @@ sub _worker_wrap {
 
 sub _dispatch_thread {
 
-   my MCE $self = $_[0]; my $_wid      = $_[1]; my $_task   = $_[2];
+   my $self     = $_[0]; my $_wid      = $_[1]; my $_task   = $_[2];
    my $_task_id = $_[3]; my $_task_wid = $_[4]; my $_params = $_[5];
 
    @_ = ();
@@ -1971,7 +1971,7 @@ sub _dispatch_thread {
 
 sub _dispatch_child {
 
-   my MCE $self = $_[0]; my $_wid      = $_[1]; my $_task   = $_[2];
+   my $self     = $_[0]; my $_wid      = $_[1]; my $_task   = $_[2];
    my $_task_id = $_[3]; my $_task_wid = $_[4]; my $_params = $_[5];
 
    @_ = ();

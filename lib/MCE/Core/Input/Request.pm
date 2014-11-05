@@ -11,7 +11,7 @@
 
 package MCE::Core::Input::Request;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -33,7 +33,7 @@ no warnings 'threads'; no warnings 'uninitialized';
 
 sub _worker_request_chunk {
 
-   my MCE $self = $_[0]; my $_proc_type = $_[1];
+   my $self = $_[0]; my $_proc_type = $_[1];
 
    @_ = ();
 

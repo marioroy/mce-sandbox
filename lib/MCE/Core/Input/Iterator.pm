@@ -11,7 +11,7 @@
 
 package MCE::Core::Input::Iterator;
 
-our $VERSION = '1.519'; $VERSION = eval $VERSION;
+our $VERSION = '1.520'; $VERSION = eval $VERSION;
 
 ## Items below are folded into MCE.
 
@@ -33,7 +33,7 @@ no warnings 'threads'; no warnings 'uninitialized';
 
 sub _worker_user_iterator {
 
-   my MCE $self = $_[0];
+   my $self = $_[0];
 
    @_ = ();
 
