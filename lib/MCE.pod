@@ -1,15 +1,15 @@
 
 =head1 NAME
 
-MCE - Many-core Engine for Perl providing parallel processing capabilities
+MCE - Many-Core Engine for Perl providing parallel processing capabilities
 
 =head1 VERSION
 
-This document describes MCE version 1.520
+This document describes MCE version 1.521
 
 =head1 DESCRIPTION
 
-Many-core Engine (MCE) for Perl helps enable a new level of performance by
+Many-Core Engine (MCE) for Perl helps enable a new level of performance by
 maximizing all available cores. MCE spawns a pool of workers and therefore
 does not fork a new process per each element of data. Instead, MCE follows
 a bank queuing model. Imagine the line being the data and bank-tellers the
@@ -25,15 +25,15 @@ Three modules make up the core engine for MCE.
 
 =over 3
 
-=item L<MCE::Core>
+=item L<MCE::Core|MCE::Core>
 
-Provides the core API for Many-core Engine.
+Provides the core API for Many-Core Engine.
 
-=item L<MCE::Signal>
+=item L<MCE::Signal|MCE::Signal>
 
 Temporary directory creation/cleanup & signal handling.
 
-=item L<MCE::Util>
+=item L<MCE::Util|MCE::Util>
 
 Public and private utility functions.
 
@@ -45,14 +45,14 @@ Currently, there are 2 addon modules.
 
 =over 3
 
-=item L<MCE::Queue>
+=item L<MCE::Queue|MCE::Queue>
 
 Provides a hybrid queuing implementation for MCE supporting normal queues and
 priority queues from a single module. MCE::Queue exchanges data via the core
 engine to enable queueing to work for both children (spawned from fork) and
 threads.
 
-=item L<MCE::Subs>
+=item L<MCE::Subs|MCE::Subs>
 
 Exports functions mapped directly to MCE's methods, e.g. mce_wid. The module
 allows 3 options; :manager, :worker, :getter.
@@ -62,38 +62,38 @@ allows 3 options; :manager, :worker, :getter.
 =head1 MCE MODELS
 
 MCE 1.5 includes 6 models. They configure the MCE instance and tune chunk_size
-and max_workers for you. Spawning and shutdown is also automatic. In essence,
-the models take Many-core Engine to a new level for ease of use.
+and max_workers for you. Spawning and shutdown is automatic. In essence, the
+models take Many-Core Engine to a new level for ease of use.
 
 =over 3
 
-=item L<MCE::Loop>
+=item L<MCE::Loop|MCE::Loop>
 
 Provides a parallel loop utilizing MCE for building creative loops.
 
-=item L<MCE::Flow>
+=item L<MCE::Flow|MCE::Flow>
 
 A parallel flow model for building creative applications. This makes use of
 user_tasks in MCE. The author has full control when utilizing this model.
 MCE::Flow is similar to MCE::Loop, but allows for multiple code blocks to
 run simultaneously with a slight change to syntax.
 
-=item L<MCE::Grep>
+=item L<MCE::Grep|MCE::Grep>
 
 Provides a parallel grep implementation similar to the native grep function.
 
-=item L<MCE::Map>
+=item L<MCE::Map|MCE::Map>
 
 Provides a parallel map model similar to the native map function.
 
-=item L<MCE::Step>
+=item L<MCE::Step|MCE::Step>
 
 Provides a parallel step implementation utilizing MCE::Queue between user
 tasks. MCE::Step is a spin off from MCE::Flow with a touch of MCE::Stream.
 This model, introduced in 1.506, allows one to pass data from one sub-task
 into the next transparently.
 
-=item L<MCE::Stream>
+=item L<MCE::Stream|MCE::Stream>
 
 Provides an efficient parallel implementation for chaining multiple maps
 and greps together through user_tasks and MCE::Queue. Like with MCE::Flow,
@@ -108,7 +108,7 @@ A placeholder for the examples included with the distribution.
 
 =over 3
 
-=item L<MCE::Examples>
+=item L<MCE::Examples|MCE::Examples>
 
 Describes various demonstations for MCE including a Monte Carlo simulation.
 

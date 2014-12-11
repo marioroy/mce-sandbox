@@ -1,11 +1,11 @@
 
 =head1 NAME
 
-MCE::Examples - A list of examples demonstrating Many-core Engine
+MCE::Examples - A list of examples demonstrating Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.520
+This document describes MCE::Examples version 1.521
 
 =head1 DESCRIPTION
 
@@ -42,7 +42,7 @@ count aggregation.
              fields. It is many times faster than the egrep binary.
              Try this against a large file containing very long lines.
 
-   flow_model.pl
+   flow_demo.pl, flow_model.pl
              Demonstrates MCE::Flow, MCE::Queue, and MCE->gather.
 
    foreach.pl, forseq.pl, forchunk.pl
@@ -157,7 +157,8 @@ This does the same thing using the foreach "sugar" method.
    });
 
 The two examples described above were done using the core API. MCE 1.5 comes
-with various models. The L<MCE::Loop> model is used for the next demonstration.
+with various models. The L<MCE::Loop|MCE::Loop> model is used for the next
+demonstration.
 
    use MCE::Loop;
 
@@ -244,8 +245,8 @@ This does the same thing using the forchunk "sugar" method.
       MCE->gather(\@result, $chunk_id);
    });
 
-The L<MCE::Loop> model is shown next. Looping is required inside the code
-block, just like above.
+The L<MCE::Loop|MCE::Loop> model is shown next. Looping is required inside the
+code block, just like above.
 
    use MCE::Loop;
 
@@ -485,14 +486,14 @@ The serial code is based off the one by "gamo". A sleep is added to imitate
 extra CPU time. The while loop is wrapped within a for loop to run 10 times.
 The random number generator is seeded as well.
 
-   use Time::HiRes qw(time sleep);
+   use Time::HiRes qw( sleep time );
 
-   srand(5906);
+   srand 5906;
 
    my ($var, $foo, $bar) = (1, 2, 3);
    my ($r, $a, $b);
 
-   my $start = time();
+   my $start = time;
 
    for (1..10) {
       while (1) {
@@ -508,7 +509,7 @@ The random number generator is seeded as well.
       print "$r -> $a\n";
    }
 
-   my $end = time();
+   my $end = time;
 
    printf STDERR "\n## compute time: %0.03f secs\n\n", $end - $start;
 
@@ -531,7 +532,7 @@ Next, we'd do the same with MCE. This demonstration requires at least MCE 1.509
 to run properly. Folks on prior releases (1.505 - 1.508) will not see output
 for the 2nd run and beyond.
 
-   use Time::HiRes qw(time sleep);
+   use Time::HiRes qw( sleep time );
    use MCE::Loop;
 
    ## Configure MCE. Move common variables inside the user_begin
@@ -567,7 +568,7 @@ for the 2nd run and beyond.
 
    ## Compute in parallel.
 
-   my $start = time(); srand(5906);
+   my $start = time; srand 5906;
 
    for (1..10) {
       $done = 0;      ## Reset $done before running
@@ -588,7 +589,7 @@ for the 2nd run and beyond.
       print "$r -> $a\n";
    }
 
-   printf "\n## compute time: %0.03f secs\n\n", time() - $start;
+   printf "\n## compute time: %0.03f secs\n\n", time - $start;
 
    -- Output
 
@@ -693,7 +694,7 @@ process on a first come, first serve basis.
 
 =head1 INDEX
 
-L<MCE>
+L<MCE|MCE>
 
 =head1 AUTHOR
 

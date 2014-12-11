@@ -9,10 +9,11 @@ package MCE::Signal;
 use strict;
 use warnings;
 
+use Time::HiRes qw( sleep time );
 use Fcntl qw( :flock O_RDONLY );
 use base qw( Exporter );
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+our $VERSION = '1.521';
 
 our ($has_threads, $main_proc_id, $prog_name);
 our ($display_die_with_localtime, $display_warn_with_localtime);
@@ -40,10 +41,10 @@ our %EXPORT_TAGS = (
 ###############################################################################
 
 sub _croak { require Carp; goto &Carp::croak; }
-sub _usage { _croak "MCE::Signal error: $_[0] is not a valid option"; }
-sub _flag  { 1; }
+sub _usage { return _croak "MCE::Signal error: $_[0] is not a valid option"; }
+sub _flag  { return 1; }
 
-my $_is_MSWin32   = ($^O eq 'MSWin32');
+my $_is_mswin32   = ($^O eq 'MSWin32');
 my $_keep_tmp_dir = 0;
 my $_no_sigmsg    = 0;
 my $_no_kill9     = 0;
@@ -51,8 +52,7 @@ my $_loaded;
 
 sub import {
 
-   my $class = shift;
-   return if ($_loaded++);
+   my $_class = shift; return if ($_loaded++);
 
    my @_export_args = ();
    my $_no_setpgrp  = 0;
@@ -75,7 +75,7 @@ sub import {
    }
 
    local $Exporter::ExportLevel = 1;
-   Exporter::import($class, @_export_args);
+   Exporter::import($_class, @_export_args);
 
  # ## MCE no longer calls setpgrp by default as of MCE 1.405.
  # ## Sets the current process group for the current process.
@@ -84,10 +84,10 @@ sub import {
    ## Sets the current process group for the current process.
    setpgrp(0,0) if ($_setpgrp == 1 && $^O ne 'MSWin32');
 
-   my ($_tmp_dir_base, $_count);
+   my ($_tmp_dir_base, $_count); $_count = 0;
 
    if (exists $ENV{TEMP}) {
-      if ($_is_MSWin32) {
+      if ($_is_mswin32) {
          $_tmp_dir_base = $ENV{TEMP} . '/mce';
          mkdir $_tmp_dir_base unless (-d $_tmp_dir_base);
       }
@@ -100,15 +100,17 @@ sub import {
          ? '/dev/shm' : '/tmp';
    }
 
-   _croak("MCE::Signal::import: '$_tmp_dir_base' is not writeable")
+   _croak("MCE::Signal::import: ($_tmp_dir_base) is not writeable")
       unless (-w $_tmp_dir_base);
 
-   $_count  = 0;
-   $tmp_dir = "$_tmp_dir_base/$prog_name.$$.$_count";
+   ## Remove taintedness from $tmp_dir.
+   ($tmp_dir) = "$_tmp_dir_base/$prog_name.$$.$_count" =~ /(.*)/;
 
-   while ( !(mkdir "$tmp_dir", 0770) ) {
-      $tmp_dir = "$_tmp_dir_base/$prog_name.$$." . (++$_count);
+   while ( !(mkdir $tmp_dir, 0770) ) {
+      ($tmp_dir) = ("$_tmp_dir_base/$prog_name.$$.".(++$_count)) =~ /(.*)/;
    }
+
+   return;
 }
 
 ###############################################################################
@@ -133,7 +135,7 @@ $SIG{TERM} = \&stop_and_exit;                          ## UNIX SIG 15
 ## the reaping of its children, especially when running multiple MCEs
 ## simultaneously.
 ##
-$SIG{CHLD} = 'DEFAULT' unless ($_is_MSWin32);
+$SIG{CHLD} = 'DEFAULT' unless ($_is_mswin32);
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -168,7 +170,8 @@ END {
 sub sys_cmd {
 
    shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
-   _croak("MCE::Signal::sys_cmd: no arguments were specified") if (@_ == 0);
+
+   _croak('MCE::Signal::sys_cmd: no arguments were specified') if (@_ == 0);
 
    my $_status = system(@_);
    my $_sig_no = $_status & 127;
@@ -176,10 +179,10 @@ sub sys_cmd {
 
    ## Kill the process group if command caught SIGINT or SIGQUIT.
 
-   kill('INT',  $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp()))
+   kill('INT',  $main_proc_id, ($_is_mswin32 ? -$$ : -getpgrp))
       if $_sig_no == 2;
 
-   kill('QUIT', $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp()))
+   kill('QUIT', $main_proc_id, ($_is_mswin32 ? -$$ : -getpgrp))
       if $_sig_no == 3;
 
    return $_exit_status;
@@ -227,7 +230,7 @@ sub sys_cmd {
       if ($$ == $main_proc_id) {
 
          if (++$_handler_cnt == 1 && ! -e "$tmp_dir/stopped") {
-            open my $_FH, "> $tmp_dir/stopped"; close $_FH;
+            open my $_FH, '>', "$tmp_dir/stopped"; close $_FH;
 
             local $\ = undef;
 
@@ -236,35 +239,36 @@ sub sys_cmd {
                my $_err_msg = undef;
 
                if ($_sig_name eq 'XCPU') {
-                  $_err_msg = "exceeded CPU time limit, exiting";
+                  $_err_msg = 'exceeded CPU time limit, exiting';
                }
                elsif ($_sig_name eq 'XFSZ') {
-                  $_err_msg = "exceeded file size limit, exiting";
+                  $_err_msg = 'exceeded file size limit, exiting';
                }
                elsif ($_sig_name eq 'TERM' && -f "$tmp_dir/died") {
-                  $_err_msg = "caught signal '__DIE__', exiting";
+                  $_err_msg = 'caught signal (__DIE__), exiting';
                }
                elsif ($_sig_name eq '__DIE__') {
-                  $_err_msg = "caught signal '__DIE__', exiting";
+                  $_err_msg = 'caught signal (__DIE__), exiting';
                }
                elsif ($_sig_name ne 'PIPE') {
-                  $_err_msg = "caught signal '$_sig_name', exiting";
+                  $_err_msg = "caught signal ($_sig_name), exiting";
                }
 
                ## Display error message.
-               print STDERR "\n## $prog_name: $_err_msg\n"
-                  if ($_err_msg && $_no_sigmsg == 0);
+               if ($_err_msg && $_no_sigmsg == 0) {
+                  print {*STDERR} "\n## $prog_name: $_err_msg\n";
+               }
 
-               open my $_FH, "> $tmp_dir/killed"; close $_FH;
+               open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
 
                ## Signal process group to terminate.
-               kill('TERM', $_is_MSWin32 ? -$$ : -getpgrp());
+               kill('TERM', $_is_mswin32 ? -$$ : -getpgrp);
 
                ## Pause a bit.
                if ($_sig_name ne 'PIPE') {
-                  select(undef, undef, undef, 0.066) for (1..3);
+                  sleep 0.066 for (1..3);
                } else {
-                  select(undef, undef, undef, 0.011) for (1..2);
+                  sleep 0.011 for (1..2);
                }
             }
 
@@ -279,7 +283,7 @@ sub sys_cmd {
                }
 
                if ($_keep_tmp_dir == 1) {
-                  print STDERR "$prog_name: saved tmp_dir = $tmp_dir\n";
+                  print {*STDERR} "$prog_name: saved tmp_dir = $tmp_dir\n";
                }
                else {
                   if ($tmp_dir ne '/tmp' && $tmp_dir ne '/var/tmp') {
@@ -292,13 +296,15 @@ sub sys_cmd {
 
             ## Signal process group to die.
             if ($_is_sig == 1) {
-               print STDERR "\n" if ($_sig_name ne 'PIPE' && $_no_sigmsg == 0);
+               if ($_sig_name ne 'PIPE' && $_no_sigmsg == 0) {
+                  print {*STDERR} "\n";
+               }
 
                if ($_no_kill9 == 1 || $_sig_name eq 'PIPE') {
-                  kill('TERM', $_is_MSWin32 ? -$$ : -getpgrp(), $main_proc_id);
+                  kill('TERM', $_is_mswin32 ? -$$ : -getpgrp, $main_proc_id);
                }
                else {
-                  kill('KILL', $_is_MSWin32 ? -$$ : -getpgrp(), $main_proc_id);
+                  kill('KILL', $_is_mswin32 ? -$$ : -getpgrp, $main_proc_id);
                }
             }
          }
@@ -318,16 +324,16 @@ sub sys_cmd {
 
             ## Notify the main process that I've died.
             if ($_sig_name eq '__DIE__' && ! -f "$tmp_dir/died") {
-               local $@; eval '
-                  open my $_FH, "> $tmp_dir/died"; close $_FH;
-               ';
+               local $@; eval {
+                  open my $_FH, '>', "$tmp_dir/died"; close $_FH;
+               };
             }
 
             ## Signal process group to terminate.
             if (! -f "$tmp_dir/killed" && ! -f "$tmp_dir/stopped") {
-               local $@; eval '
-                  open my $_FH, "> $tmp_dir/killed"; close $_FH;
-               ';
+               local $@; eval {
+                  open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
+               };
                kill('TERM', $main_proc_id, -$$);
             }
 
@@ -341,13 +347,16 @@ sub sys_cmd {
 
       ## Exit thread/process with status.
       if ($_is_sig == 1 && $_no_kill9 == 0) {
-         select(undef, undef, undef, 0.066) for (1..6);
+         sleep 0.066 for (1..6);
       }
 
-      threads->exit($_exit_status)
-         if ($has_threads && threads->can('exit'));
+      if ($has_threads && threads->can('exit')) {
+         threads->exit($_exit_status);
+      }
 
       CORE::exit($_exit_status);
+
+      return;
    }
 }
 
@@ -375,9 +384,12 @@ sub _shutdown_mce {
             $mce_spawned_ref->{$_mce_sid}->shutdown()
                if ($_mce_sid =~ /\A$$\.$_tid\./);
          }
+
          delete $mce_spawned_ref->{$_mce_sid};
       }
    }
+
+   return;
 }
 
 ###############################################################################
@@ -398,16 +410,17 @@ sub _die_handler {
    ## when wanting the output to contain the localtime.
 
    if ($MCE::Signal::display_die_with_localtime) {
-      my $_time_stamp = localtime();
-      print STDERR "## $_time_stamp: $prog_name: ERROR:\n", $_[0];
+      my $_time_stamp = localtime;
+      print {*STDERR} "## $_time_stamp: $prog_name: ERROR:\n", $_[0];
    }
    else {
-      print STDERR $_[0];
+      print {*STDERR} $_[0];
    }
 
    MCE::Signal->stop_and_exit('__DIE__');
-
    CORE::exit;
+
+   return;
 }
 
 sub _warn_handler {
@@ -428,12 +441,14 @@ sub _warn_handler {
    ## when wanting the output to contain the localtime.
 
    if ($MCE::Signal::display_warn_with_localtime) {
-      my $_time_stamp = localtime();
-      print STDERR "## $_time_stamp: $prog_name: WARNING:\n", $_[0];
+      my $_time_stamp = localtime;
+      print {*STDERR} "## $_time_stamp: $prog_name: WARNING:\n", $_[0];
    }
    else {
-      print STDERR $_[0];
+      print {*STDERR} $_[0];
    }
+
+   return;
 }
 
 1;
@@ -452,7 +467,7 @@ MCE::Signal - Temporary directory creation/cleanup & signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.520
+This document describes MCE::Signal version 1.521
 
 =head1 SYNOPSIS
 
@@ -549,7 +564,7 @@ Perl script. For this reason, sys_cmd was added to MCE::Signal.
 
 =head1 INDEX
 
-L<MCE>
+L<MCE|MCE>
 
 =head1 AUTHOR
 

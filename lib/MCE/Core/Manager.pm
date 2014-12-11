@@ -11,14 +11,16 @@
 
 package MCE::Core::Manager;
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+use strict;
+use warnings;
+
+## no critic (TestingAndDebugging::ProhibitNoStrict)
+
+our $VERSION = '1.521';
 
 ## Items below are folded into MCE.
 
 package MCE;
-
-use strict;
-use warnings;
 
 use bytes;
 
@@ -73,9 +75,9 @@ sub _output_loop {
 
    @_ = ();
 
-   die "Private method called" unless (caller)[0]->isa( ref($self) );
+   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
-   my ($_aborted, $_eof_flag, $_syn_flag, %_sendto_fhs, $_value, $_want_id);
+   my ($_aborted, $_eof_flag, $_syn_flag, %_sendto_fhs, $_want_id);
    my ($_callback, $_chunk_id, $_chunk_size, $_fd, $_file, $_flush_file);
    my (@_is_c_ref, @_is_h_ref, @_is_q_ref, $_on_post_exit, $_on_post_run);
    my ($_has_user_tasks, $_sess_dir, $_task_id, $_user_error, $_user_output);
@@ -154,14 +156,15 @@ sub _output_loop {
 
          read($_DAU_R_SOCK, $_exit_msg, $_len) if ($_len);
 
-         $self->{_wrk_status} = $_exit_status
-            if (abs($_exit_status) > abs($self->{_wrk_status}));
+         if (abs($_exit_status) > abs($self->{_wrk_status})) {
+            $self->{_wrk_status} = $_exit_status;
+         }
 
          ## Reap child/thread. Note: Win32 uses negative PIDs.
 
          if ($_exit_pid =~ /^PID_(-?\d+)/) {
             my $_pid = $1; my $_list = $self->{_pids};
-            for my $i (0 .. @$_list) {
+            for my $i (0 .. @{ $_list }) {
                if ($_list->[$i] && $_list->[$i] == $_pid) {
                   waitpid $_pid, 0;
                   $self->{_pids}->[$i] = undef;
@@ -171,7 +174,7 @@ sub _output_loop {
          }
          elsif ($_exit_pid =~ /^TID_(\d+)/) {
             my $_tid = $1; my $_list = $self->{_tids};
-            for my $i (0 .. @$_list) {
+            for my $i (0 .. @{ $_list }) {
                if ($_list->[$i] && $_list->[$i] == $_tid) {
                   ${ $self->{_thrs}->[$i] }->join();
                   $self->{_thrs}->[$i] = undef;
@@ -213,7 +216,7 @@ sub _output_loop {
 
          if ($_offset_pos >= $_input_size || $_aborted) {
             local $\ = undef if (defined $\);
-            print $_DAU_R_SOCK '0' . $LF;
+            print {$_DAU_R_SOCK} '0' . $LF;
             return;
          }
 
@@ -222,19 +225,19 @@ sub _output_loop {
          }
          else {
             if ($_offset_pos + $_chunk_size - 1 < $_input_size) {
-               $_buffer = $self->{freeze}( [ @$_input_data[
+               $_buffer = $self->{freeze}( [ @{ $_input_data }[
                   $_offset_pos .. $_offset_pos + $_chunk_size - 1
                ] ] );
             }
             else {
-               $_buffer = $self->{freeze}( [ @$_input_data[
+               $_buffer = $self->{freeze}( [ @{ $_input_data }[
                   $_offset_pos .. $_input_size - 1
                ] ] );
             }
          }
 
          local $\ = undef if (defined $\); $_len = length $_buffer;
-         print $_DAU_R_SOCK $_len . $LF . (++$_chunk_id) . $LF . $_buffer;
+         print {$_DAU_R_SOCK} $_len . $LF . (++$_chunk_id) . $LF . $_buffer;
 
          $_offset_pos += $_chunk_size;
 
@@ -250,7 +253,7 @@ sub _output_loop {
 
          if ($_eof_flag || $_aborted) {
             local $\ = undef if (defined $\);
-            print $_DAU_R_SOCK '0' . $LF;
+            print {$_DAU_R_SOCK} '0' . $LF;
             return;
          }
 
@@ -278,7 +281,7 @@ sub _output_loop {
 
          local $\ = undef if (defined $\); $_len = length $_buffer;
 
-         print $_DAU_R_SOCK ($_len)
+         print {$_DAU_R_SOCK} ($_len)
             ? $_len . $LF . (++$_chunk_id) . $LF . $_buffer
             : '0' . $LF;
 
@@ -290,7 +293,7 @@ sub _output_loop {
 
          if ($_aborted) {
             local $\ = undef if (defined $\);
-            print $_DAU_R_SOCK '-1' . $LF;
+            print {$_DAU_R_SOCK} '-1' . $LF;
             return;
          }
 
@@ -299,7 +302,7 @@ sub _output_loop {
                $_buffer = $self->{freeze}( [ @_ret_a ] );
                local $\ = undef if (defined $\); $_len = length $_buffer;
 
-               print $_DAU_R_SOCK $_len . '1' . $LF . (++$_chunk_id) . $LF .
+               print {$_DAU_R_SOCK} $_len . '1' . $LF . (++$_chunk_id) . $LF .
                   $_buffer;
 
                return;
@@ -307,7 +310,7 @@ sub _output_loop {
             elsif (defined $_ret_a[0]) {
                local $\ = undef if (defined $\); $_len = length $_ret_a[0];
 
-               print $_DAU_R_SOCK $_len . '0' . $LF . (++$_chunk_id) . $LF .
+               print {$_DAU_R_SOCK} $_len . '0' . $LF . (++$_chunk_id) . $LF .
                   $_ret_a[0];
 
                return;
@@ -315,7 +318,7 @@ sub _output_loop {
          }
 
          local $\ = undef if (defined $\);
-         print $_DAU_R_SOCK '-1' . $LF;
+         print {$_DAU_R_SOCK} '-1' . $LF;
          $_aborted = 1;
 
          return;
@@ -344,19 +347,19 @@ sub _output_loop {
             my @_ret_a = $_callback->(@{ $_data_ref });
             $_buffer = $self->{freeze}(\@_ret_a);
             local $\ = undef if (defined $\); $_len = length $_buffer;
-            print $_DAU_R_SOCK $_len . $LF . $_buffer;
+            print {$_DAU_R_SOCK} $_len . $LF . $_buffer;
          }
          else {
             my $_ret_s = $_callback->(@{ $_data_ref });
             unless (ref $_ret_s) {
                local $\ = undef if (defined $\);
                $_len = (defined $_ret_s) ? length $_ret_s : -1;
-               print $_DAU_R_SOCK WANTS_SCALAR . $LF . $_len . $LF . $_ret_s;
+               print {$_DAU_R_SOCK} WANTS_SCALAR . $LF . $_len . $LF . $_ret_s;
             }
             else {
                $_buffer = $self->{freeze}($_ret_s);
                local $\ = undef if (defined $\); $_len = length $_buffer;
-               print $_DAU_R_SOCK WANTS_REF . $LF . $_len . $LF . $_buffer;
+               print {$_DAU_R_SOCK} WANTS_REF . $LF . $_len . $LF . $_buffer;
             }
          }
 
@@ -381,19 +384,19 @@ sub _output_loop {
             my @_ret_a = $_callback->($_buffer);
             $_buffer = $self->{freeze}(\@_ret_a);
             local $\ = undef if (defined $\); $_len = length $_buffer;
-            print $_DAU_R_SOCK $_len . $LF . $_buffer;
+            print {$_DAU_R_SOCK} $_len . $LF . $_buffer;
          }
          else {
             my $_ret_s = $_callback->($_buffer);
             unless (ref $_ret_s) {
                local $\ = undef if (defined $\);
                $_len = (defined $_ret_s) ? length $_ret_s : -1;
-               print $_DAU_R_SOCK WANTS_SCALAR . $LF . $_len . $LF . $_ret_s;
+               print {$_DAU_R_SOCK} WANTS_SCALAR . $LF . $_len . $LF . $_ret_s;
             }
             else {
                $_buffer = $self->{freeze}($_ret_s);
                local $\ = undef if (defined $\); $_len = length $_buffer;
-               print $_DAU_R_SOCK WANTS_REF . $LF . $_len . $LF . $_buffer;
+               print {$_DAU_R_SOCK} WANTS_REF . $LF . $_len . $LF . $_buffer;
             }
          }
 
@@ -416,19 +419,19 @@ sub _output_loop {
             my @_ret_a = $_callback->();
             $_buffer = $self->{freeze}(\@_ret_a);
             local $\ = undef if (defined $\); $_len = length $_buffer;
-            print $_DAU_R_SOCK $_len . $LF . $_buffer;
+            print {$_DAU_R_SOCK} $_len . $LF . $_buffer;
          }
          else {
             my $_ret_s = $_callback->();
             unless (ref $_ret_s) {
                local $\ = undef if (defined $\);
                $_len = (defined $_ret_s) ? length $_ret_s : -1;
-               print $_DAU_R_SOCK WANTS_SCALAR . $LF . $_len . $LF . $_ret_s;
+               print {$_DAU_R_SOCK} WANTS_SCALAR . $LF . $_len . $LF . $_ret_s;
             }
             else {
                $_buffer = $self->{freeze}($_ret_s);
                local $\ = undef if (defined $\); $_len = length $_buffer;
-               print $_DAU_R_SOCK WANTS_REF . $LF . $_len . $LF . $_buffer;
+               print {$_DAU_R_SOCK} WANTS_REF . $LF . $_len . $LF . $_buffer;
             }
          }
 
@@ -526,7 +529,7 @@ sub _output_loop {
          if (defined $_user_output) {
             $_user_output->($_buffer);
          } else {
-            print $_MCE_STDOUT $_buffer;
+            print {$_MCE_STDOUT} $_buffer;
          }
 
          return;
@@ -541,7 +544,7 @@ sub _output_loop {
          if (defined $_user_error) {
             $_user_error->($_buffer);
          } else {
-            print $_MCE_STDERR $_buffer;
+            print {$_MCE_STDERR} $_buffer;
          }
 
          return;
@@ -561,12 +564,13 @@ sub _output_loop {
             binmode $_sendto_fhs{$_file};
 
             ## Select new FH, turn on autoflush, restore the old FH.
-            select((select($_sendto_fhs{$_file}), $| = 1)[0])
-               if ($_flush_file);
+            if ($_flush_file) {
+               select((select($_sendto_fhs{$_file}), $| = 1)[0]);
+            }
          }
 
          $_OUT_FILE = $_sendto_fhs{$_file};
-         print $_OUT_FILE $_buffer;
+         print {$_OUT_FILE} $_buffer;
 
          return;
       },
@@ -588,12 +592,13 @@ sub _output_loop {
             binmode $_sendto_fhs{$_fd};
 
             ## Select new FH, turn on autoflush, restore the old FH.
-            select((select($_sendto_fhs{$_fd}), $| = 1)[0])
-               if ($_flush_file);
+            if ($_flush_file) {
+               select((select($_sendto_fhs{$_fd}), $| = 1)[0]);
+            }
          }
 
          $_OUT_FILE = $_sendto_fhs{$_fd};
-         print $_OUT_FILE $_buffer;
+         print {$_OUT_FILE} $_buffer;
 
          return;
       },
@@ -630,7 +635,7 @@ sub _output_loop {
          }
 
          return;
-      }
+      },
 
    );
 
@@ -648,8 +653,9 @@ sub _output_loop {
    $_single_dim   = $self->{_single_dim};
    $_sess_dir     = $self->{_sess_dir};
 
-   $_chunk_size = $self->{user_tasks}->[0]->{chunk_size}
-      if ($_has_user_tasks && $self->{user_tasks}->[0]->{chunk_size});
+   if ($_has_user_tasks && $self->{user_tasks}->[0]->{chunk_size}) {
+      $_chunk_size = $self->{user_tasks}->[0]->{chunk_size};
+   }
 
    if ($_has_user_tasks) {
       foreach (0 .. @{ $self->{user_tasks} } - 1) {
@@ -677,7 +683,7 @@ sub _output_loop {
    }
 
    if (defined $_input_data && ref $_input_data eq 'ARRAY') {
-      $_input_size = @$_input_data;
+      $_input_size = @{ $_input_data };
       $_offset_pos = 0;
    } else {
       $_input_size = $_offset_pos = 0;
@@ -690,7 +696,7 @@ sub _output_loop {
       binmode $_MCE_STDOUT;
    }
    else {
-      open $_MCE_STDOUT, ">&=STDOUT";
+      open $_MCE_STDOUT, '>&=STDOUT';
       binmode $_MCE_STDOUT;
    }
 
@@ -700,7 +706,7 @@ sub _output_loop {
       binmode $_MCE_STDERR;
    }
    else {
-      open $_MCE_STDERR, ">&=STDERR";
+      open $_MCE_STDERR, '>&=STDERR';
       binmode $_MCE_STDERR;
    }
 
@@ -717,7 +723,7 @@ sub _output_loop {
    ## -------------------------------------------------------------------------
    ## Output event loop.
 
-   my ($_func, $_chn); my $_channels = $self->{_dat_r_sock};
+   my $_func; my $_channels = $self->{_dat_r_sock};
 
    $_BSB_W_SOCK = $self->{_bsb_w_sock};        ## For IPC
    $_BSE_W_SOCK = $self->{_bse_w_sock};
@@ -753,8 +759,7 @@ sub _output_loop {
    $_->($self) for (@{ $_plugin_loop_end });
 
    ## Call on_post_run callback.
-   $_on_post_run->($self, $self->{_status})
-      if (defined $_on_post_run);
+   $_on_post_run->($self, $self->{_status}) if (defined $_on_post_run);
 
    ## Close opened sendto file handles.
    for (keys %_sendto_fhs) {

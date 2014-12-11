@@ -11,14 +11,14 @@
 
 package MCE::Core::Input::Handle;
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+use strict;
+use warnings;
+
+our $VERSION = '1.521';
 
 ## Items below are folded into MCE.
 
 package MCE;
-
-use strict;
-use warnings;
 
 use bytes;
 
@@ -42,9 +42,9 @@ sub _worker_read_handle {
 
    @_ = ();
 
-   die "Private method called" unless (caller)[0]->isa( ref($self) );
+   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
-   _croak("MCE::_worker_read_handle: 'user_func' is not specified")
+   _croak('MCE::_worker_read_handle: (user_func) is not specified')
       unless (defined $self->{user_func});
 
    my $_QUE_R_SOCK  = $self->{_que_r_sock};
@@ -60,7 +60,7 @@ sub _worker_read_handle {
    my @_records = (); $_chunk_id = $_offset_pos = 0;
 
    $_data_size = ($_proc_type == READ_MEMORY)
-      ? length $$_input_data : -s $_input_data;
+      ? length ${ $_input_data } : -s $_input_data;
 
    if ($_chunk_size <= MAX_RECS_SIZE || $_proc_type == READ_MEMORY) {
       open    $_IN_FILE, '<', $_input_data or die "$_input_data: $!\n";
@@ -204,6 +204,7 @@ sub _worker_read_handle {
                local $/ = $_RS if ($_RS_FLG);
                _sync_buffer_to_array(\$_buffer, \@_records);
             }
+
             local $_ = \@_records;
             $_wuf->($self, \@_records, $_chunk_id);
          }

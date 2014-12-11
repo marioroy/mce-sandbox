@@ -12,14 +12,14 @@
 
 package MCE::Core::Input::Generator;
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+use strict;
+use warnings;
+
+our $VERSION = '1.521';
 
 ## Items below are folded into MCE.
 
 package MCE;
-
-use strict;
-use warnings;
 
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
@@ -38,9 +38,9 @@ sub _worker_sequence_generator {
 
    @_ = ();
 
-   die "Private method called" unless (caller)[0]->isa( ref($self) );
+   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
-   _croak("MCE::_worker_sequence_generator: 'user_func' is not specified")
+   _croak('MCE::_worker_sequence_generator: (user_func) is not specified')
       unless (defined $self->{user_func});
 
    my $_bounds_only = $self->{bounds_only} || 0;
@@ -192,7 +192,7 @@ sub _worker_sequence_generator {
                }
             }
 
-            return unless (@_n > 0);
+            return unless (scalar @_n);
          }
 
          ## -------------------------------------------------------------------

@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Queue - Hybrid queues (normal including priority) for Many-core Engine.
+## MCE::Queue - Hybrid queues (normal and priority) for Many-Core Engine.
 ##
 ###############################################################################
 
@@ -9,12 +9,15 @@ package MCE::Queue;
 use strict;
 use warnings;
 
+## no critic (Subroutines::ProhibitExplicitReturnUndef)
+## no critic (TestingAndDebugging::ProhibitNoStrict)
+
 use Fcntl qw( :flock O_RDONLY );
 use Socket qw( :crlf PF_UNIX PF_UNSPEC SOCK_STREAM );
 use Scalar::Util qw( looks_like_number );
 use bytes;
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+our $VERSION = '1.521';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -22,7 +25,7 @@ our $VERSION = '1.520'; $VERSION = eval $VERSION;
 ##
 ###############################################################################
 
-our ($HIGHEST, $LOWEST, $FIFO, $LILO, $LIFO, $FILO) = (1, 0, 1, 1, 0, 0);
+our ($HIGHEST, $LOWEST, $FIFO, $LIFO, $LILO, $FILO) = (1, 0, 1, 0, 1, 0);
 
 our $PORDER  = $HIGHEST;
 our $TYPE    = $FIFO;
@@ -32,34 +35,35 @@ my $_loaded;
 
 sub import {
 
-   my $class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_loaded++);
 
    ## Process module arguments.
-   while (my $_arg = shift) {
+   while (my $_argument = shift) {
+      my $_arg = lc $_argument;
 
-      if ( $_arg =~ /^porder$/i ) {
-         _croak("MCE::Queue::import: 'PORDER' must be 1 or 0")
+      if ( $_arg eq 'porder' ) {
+         _croak('MCE::Queue::import: (PORDER) must be 1 or 0')
             if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
 
          $MCE::Queue::PORDER = shift;
          next;
       }
-      if ( $_arg =~ /^type$/i ) {
-         _croak("MCE::Queue::import: 'TYPE' must be 1 or 0")
+      if ( $_arg eq 'type' ) {
+         _croak('MCE::Queue::import: (TYPE) must be 1 or 0')
             if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
 
          $MCE::Queue::TYPE = shift;
          next;
       }
-      if ( $_arg =~ /^fast$/i ) {
-         _croak("MCE::Queue::import: 'FAST' must be 1 or 0")
+      if ( $_arg eq 'fast' ) {
+         _croak('MCE::Queue::import: (FAST) must be 1 or 0')
             if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
 
          $MCE::Queue::FAST = shift;
          next;
       }
 
-      _croak("MCE::Queue::import: '$_arg' is not a valid module argument");
+      _croak("MCE::Queue::import: ($_argument) is not a valid module argument");
    }
 
    ## Define public methods to internal methods.
@@ -69,18 +73,18 @@ sub import {
       _mce_m_init();
    }
    else {
-      *{ 'MCE::Queue::clear'      } = \&MCE::Queue::_clear;
-      *{ 'MCE::Queue::enqueue'    } = \&MCE::Queue::_enqueue;
-      *{ 'MCE::Queue::enqueuep'   } = \&MCE::Queue::_enqueuep;
-      *{ 'MCE::Queue::dequeue'    } = \&MCE::Queue::_dequeue;
-      *{ 'MCE::Queue::dequeue_nb' } = \&MCE::Queue::_dequeue;
-      *{ 'MCE::Queue::pending'    } = \&MCE::Queue::_pending;
-      *{ 'MCE::Queue::insert'     } = \&MCE::Queue::_insert;
-      *{ 'MCE::Queue::insertp'    } = \&MCE::Queue::_insertp;
-      *{ 'MCE::Queue::peek'       } = \&MCE::Queue::_peek;
-      *{ 'MCE::Queue::peekp'      } = \&MCE::Queue::_peekp;
-      *{ 'MCE::Queue::peekh'      } = \&MCE::Queue::_peekh;
-      *{ 'MCE::Queue::heap'       } = \&MCE::Queue::_heap;
+      *{ 'MCE::Queue::clear'      } = \&_clear;
+      *{ 'MCE::Queue::enqueue'    } = \&_enqueue;
+      *{ 'MCE::Queue::enqueuep'   } = \&_enqueuep;
+      *{ 'MCE::Queue::dequeue'    } = \&_dequeue;
+      *{ 'MCE::Queue::dequeue_nb' } = \&_dequeue;
+      *{ 'MCE::Queue::pending'    } = \&_pending;
+      *{ 'MCE::Queue::insert'     } = \&_insert;
+      *{ 'MCE::Queue::insertp'    } = \&_insertp;
+      *{ 'MCE::Queue::peek'       } = \&_peek;
+      *{ 'MCE::Queue::peekp'      } = \&_peekp;
+      *{ 'MCE::Queue::peekh'      } = \&_peekh;
+      *{ 'MCE::Queue::heap'       } = \&_heap;
    }
 
    return;
@@ -128,7 +132,7 @@ my %_valid_fields_new = map { $_ => 1 } qw(
 );
 
 my $_queues = {};
-my $_id = 0;
+my $_qid    = 0;
 
 sub DESTROY {
 
@@ -160,14 +164,14 @@ sub DESTROY {
 
 sub new {
 
-   my ($class, %argv) = @_;
+   my ($_class, %_argv) = @_;
 
    @_ = ();
 
-   my $_queue = {}; bless($_queue, ref($class) || $class);
+   my $_queue = {}; bless($_queue, ref($_class) || $_class);
 
-   for (keys %argv) {
-      _croak("MCE::Queue::new: '$_' is not a valid constructor argument")
+   for (keys %_argv) {
+      _croak("MCE::Queue::new: ($_) is not a valid constructor argument")
          unless (exists $_valid_fields_new{$_});
    }
 
@@ -175,48 +179,44 @@ sub new {
    $_queue->{_heap} = [];  ## Priority heap [ pN, p2, p1 ] ## in heap order
                            ## fyi, _datp will always dequeue before _datq
 
-   $_queue->{_porder} = (exists $argv{porder} && defined $argv{porder})
-      ? $argv{porder} : $MCE::Queue::PORDER;
-
-   $_queue->{_type} = (exists $argv{type} && defined $argv{type})
-      ? $argv{type} : $MCE::Queue::TYPE;
-
-   $_queue->{_fast} = (exists $argv{fast} && defined $argv{fast})
-      ? $argv{fast} : $MCE::Queue::FAST;
+   $_queue->{_porder} = (exists $_argv{porder} && defined $_argv{porder})
+      ? $_argv{porder} : $MCE::Queue::PORDER;
+   $_queue->{_type} = (exists $_argv{type} && defined $_argv{type})
+      ? $_argv{type} : $MCE::Queue::TYPE;
+   $_queue->{_fast} = (exists $_argv{fast} && defined $_argv{fast})
+      ? $_argv{fast} : $MCE::Queue::FAST;
 
    ## -------------------------------------------------------------------------
 
-   _croak("MCE::Queue::new: 'porder' must be 1 or 0")
+   _croak('MCE::Queue::new: (porder) must be 1 or 0')
       if ($_queue->{_porder} ne '1' && $_queue->{_porder} ne '0');
-
-   _croak("MCE::Queue::new: 'type' must be 1 or 0")
+   _croak('MCE::Queue::new: (type) must be 1 or 0')
       if ($_queue->{_type} ne '1' && $_queue->{_type} ne '0');
-
-   _croak("MCE::Queue::new: 'fast' must be 1 or 0")
+   _croak('MCE::Queue::new: (fast) must be 1 or 0')
       if ($_queue->{_fast} ne '1' && $_queue->{_fast} ne '0');
 
-   if (exists $argv{queue}) {
-      _croak("MCE::Queue::new: 'queue' is not an ARRAY reference")
-         if (ref $argv{queue} ne 'ARRAY');
+   if (exists $_argv{queue}) {
+      _croak('MCE::Queue::new: (queue) is not an ARRAY reference')
+         if (ref $_argv{queue} ne 'ARRAY');
 
-      $_queue->{_datq} = $argv{queue};
+      $_queue->{_datq} = $_argv{queue};
    }
    else {
       $_queue->{_datq} = [];
    }
 
-   if (exists $argv{gather}) {
-      _croak("MCE::Queue::new: 'gather' is not a CODE reference")
-         if (ref $argv{gather} ne 'CODE');
+   if (exists $_argv{gather}) {
+      _croak('MCE::Queue::new: (gather) is not a CODE reference')
+         if (ref $_argv{gather} ne 'CODE');
 
-      $_queue->{gather} = $argv{gather};
+      $_queue->{gather} = $_argv{gather};
    }
 
    ## -------------------------------------------------------------------------
 
    if (defined $MCE::VERSION) {
       if (MCE->wid == 0) {
-         $_queue->{_id} = ++$_id; $_queues->{$_id} = $_queue;
+         $_queue->{_id} = ++$_qid; $_queues->{$_qid} = $_queue;
          $_queue->{_desem} = 0 if ($_queue->{_fast});
 
          socketpair( $_queue->{_qr_sock}, $_queue->{_qw_sock},
@@ -231,7 +231,7 @@ sub new {
          select $_old_hndl;
 
          syswrite $_queue->{_qw_sock}, $LF
-            if (exists $argv{queue} && scalar @{ $argv{queue} });
+            if (exists $_argv{queue} && scalar @{ $_argv{queue} });
       }
       else {
          $_queue->{_standalone} = 1;
@@ -282,7 +282,7 @@ sub _enqueuep {
 
    my $_queue = shift; my $_p = shift;
 
-   _croak("MCE::Queue::enqueuep: 'priority' is not an integer")
+   _croak('MCE::Queue::enqueuep: (priority) is not an integer')
       if (!looks_like_number($_p) || int($_p) != $_p);
 
    return unless (scalar @_);
@@ -322,7 +322,7 @@ sub _dequeue {
    if (defined $_[1] && $_[1] ne '1') {
       my @_items; my $_c = $_[1];
 
-      _croak("MCE::Queue::dequeue: 'count argument' is not valid")
+      _croak('MCE::Queue::dequeue: (count argument) is not valid')
          if (!looks_like_number($_c) || int($_c) != $_c || $_c < 1);
 
       push(@_items, $_queue->_dequeue()) for (1 .. $_c);
@@ -371,16 +371,33 @@ sub _insert {
 
    my $_queue = shift; my $_i = shift;
 
-   _croak("MCE::Queue::insert: 'index' is not an integer")
+   _croak('MCE::Queue::insert: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
 
    return unless (scalar @_);
 
-   if ($_i > @{ $_queue->{_datq} }) {
-      push @{ $_queue->{_datq} }, @_;
+   if (abs($_i) > scalar @{ $_queue->{_datq} }) {
+      if ($_i >= 0) {
+         if ($_queue->{_type}) {
+            push @{ $_queue->{_datq} }, @_;
+         } else {
+            unshift @{ $_queue->{_datq} }, @_;
+         }
+      }
+      else {
+         if ($_queue->{_type}) {
+            unshift @{ $_queue->{_datq} }, @_;
+         } else {
+            push @{ $_queue->{_datq} }, @_;
+         }
+      }
    }
    else {
-      $_i = 0 if (abs($_i) > @{ $_queue->{_datq} });
+      if (!$_queue->{_type}) {
+         $_i = ($_i >= 0)
+            ? scalar(@{ $_queue->{_datq} }) - $_i
+            : abs($_i);
+      }
       splice @{ $_queue->{_datq} }, $_i, 0, @_;
    }
 
@@ -393,20 +410,37 @@ sub _insertp {
 
    my $_queue = shift; my $_p = shift; my $_i = shift;
 
-   _croak("MCE::Queue::insertp: 'priority' is not an integer")
+   _croak('MCE::Queue::insertp: (priority) is not an integer')
       if (!looks_like_number($_p) || int($_p) != $_p);
-
-   _croak("MCE::Queue::insertp: 'index' is not an integer")
+   _croak('MCE::Queue::insertp: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
 
    return unless (scalar @_);
 
    if (exists $_queue->{_datp}->{$_p} && scalar @{ $_queue->{_datp}->{$_p} }) {
-      if ($_i > @{ $_queue->{_datp}->{$_p} }) {
-         push @{ $_queue->{_datp}->{$_p} }, @_;
+
+      if (abs($_i) > scalar @{ $_queue->{_datp}->{$_p} }) {
+         if ($_i >= 0) {
+            if ($_queue->{_type}) {
+               push @{ $_queue->{_datp}->{$_p} }, @_;
+            } else {
+               unshift @{ $_queue->{_datp}->{$_p} }, @_;
+            }
+         }
+         else {
+            if ($_queue->{_type}) {
+               unshift @{ $_queue->{_datp}->{$_p} }, @_;
+            } else {
+               push @{ $_queue->{_datp}->{$_p} }, @_;
+            }
+         }
       }
       else {
-         $_i = 0 if (abs($_i) > @{ $_queue->{_datp}->{$_p} });
+         if (!$_queue->{_type}) {
+            $_i = ($_i >=0)
+               ? scalar(@{ $_queue->{_datp}->{$_p} }) - $_i
+               : abs($_i);
+         }
          splice @{ $_queue->{_datp}->{$_p} }, $_i, 0, @_;
       }
    }
@@ -421,6 +455,8 @@ sub _insertp {
 ## ----------------------------------------------------------------------------
 ## Peek and heap methods.
 ##
+## Below, do not change 'return undef' statements to 'return'.
+##
 ###############################################################################
 
 ## Return an item without removing it from the queue.
@@ -429,8 +465,16 @@ sub _peek {
 
    my $_queue = shift; my $_i = shift || 0;
 
-   _croak("MCE::Queue::peek: 'index' is not an integer")
+   _croak('MCE::Queue::peek: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
+
+   return undef if (abs($_i) > scalar @{ $_queue->{_datq} });
+
+   if (!$_queue->{_type}) {
+      $_i = ($_i >= 0)
+         ? scalar(@{ $_queue->{_datq} }) - ($_i + 1)
+         : abs($_i + 1);
+   }
 
    return $_queue->{_datq}->[$_i];
 }
@@ -441,13 +485,21 @@ sub _peekp {
 
    my $_queue = shift; my $_p = shift; my $_i = shift || 0;
 
-   _croak("MCE::Queue::peekp: 'priority' is not an integer")
+   _croak('MCE::Queue::peekp: (priority) is not an integer')
       if (!looks_like_number($_p) || int($_p) != $_p);
-
-   _croak("MCE::Queue::peekp: 'index' is not an integer")
+   _croak('MCE::Queue::peekp: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
 
    return undef unless (exists $_queue->{_datp}->{$_p});
+
+   return undef if (abs($_i) > scalar @{ $_queue->{_datp}->{$_p} });
+
+   if (!$_queue->{_type}) {
+      $_i = ($_i >= 0)
+         ? scalar(@{ $_queue->{_datp}->{$_p} }) - ($_i + 1)
+         : abs($_i + 1);
+   }
+
    return $_queue->{_datp}->{$_p}->[$_i];
 }
 
@@ -457,8 +509,10 @@ sub _peekh {
 
    my $_queue = shift; my $_i = shift || 0;
 
-   _croak("MCE::Queue::peekh: 'index' is not an integer")
+   _croak('MCE::Queue::peekh: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
+
+   return undef if (abs($_i) > scalar @{ $_queue->{_heap} });
 
    return $_queue->{_heap}->[$_i];
 }
@@ -485,6 +539,27 @@ sub _croak {
    }
 
    return;
+}
+
+## Helper method for getting the reference to the underlying array.
+## Use with test scripts for comparing data only (not a public API).
+
+sub _get_aref {
+
+   my $_queue = shift; my $_p = shift;
+
+   return if (defined $MCE::MCE && $MCE::MCE->wid);
+
+   if (defined $_p) {
+      _croak('MCE::Queue::_get_aref: (priority) is not an integer')
+         if (!looks_like_number($_p) || int($_p) != $_p);
+
+      return undef unless (exists $_queue->{_datp}->{$_p});
+
+      return $_queue->{_datp}->{$_p};
+   }
+
+   return $_queue->{_datq};
 }
 
 ## A quick method for just wanting to know if the queue has pending data.
@@ -584,7 +659,7 @@ sub _heap_insert_high {
 
       OUTPUT_C_QUE.$LF => sub {                   ## Clear the queue
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_id = <$_DAU_R_SOCK>);
@@ -595,7 +670,7 @@ sub _heap_insert_high {
 
          $_queue->_clear();
 
-         print $_DAU_R_SOCK $LF;
+         print {$_DAU_R_SOCK} $LF;
 
          return;
       },
@@ -604,7 +679,7 @@ sub _heap_insert_high {
 
       OUTPUT_A_QUE.$LF => sub {                   ## Enqueue into queue (A)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_id  = <$_DAU_R_SOCK>);
@@ -629,7 +704,7 @@ sub _heap_insert_high {
 
       OUTPUT_A_QUP.$LF => sub {                   ## Enqueue into queue (A,p)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_p   = <$_DAU_R_SOCK>);
@@ -651,7 +726,7 @@ sub _heap_insert_high {
 
       OUTPUT_R_QUE.$LF => sub {                   ## Enqueue into queue (R)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_id  = <$_DAU_R_SOCK>);
@@ -676,7 +751,7 @@ sub _heap_insert_high {
 
       OUTPUT_R_QUP.$LF => sub {                   ## Enqueue into queue (R,p)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_p   = <$_DAU_R_SOCK>);
@@ -698,7 +773,7 @@ sub _heap_insert_high {
 
       OUTPUT_S_QUE.$LF => sub {                   ## Enqueue into queue (S)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_id  = <$_DAU_R_SOCK>);
@@ -723,7 +798,7 @@ sub _heap_insert_high {
 
       OUTPUT_S_QUP.$LF => sub {                   ## Enqueue into queue (S,p)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_p   = <$_DAU_R_SOCK>);
@@ -745,7 +820,7 @@ sub _heap_insert_high {
 
       OUTPUT_D_QUE.$LF => sub {                   ## Dequeue from queue (B)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
 
          chomp($_c  = <$_DAU_R_SOCK>); $_c = 0 if ($_c == 1);
          chomp($_id = <$_DAU_R_SOCK>);
@@ -782,16 +857,16 @@ sub _heap_insert_high {
 
          if ($_c) {
             unless (defined $_items[0]) {
-               print $_DAU_R_SOCK -1 . $LF;
+               print {$_DAU_R_SOCK} -1 . $LF;
             }
             else {
                $_buffer = $_MCE->{freeze}(\@_items);
-               print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+               print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
             }
          }
          else {
             unless (defined $_buffer) {
-               print $_DAU_R_SOCK -1 . $LF;
+               print {$_DAU_R_SOCK} -1 . $LF;
             }
             else {
                if (ref $_buffer) {
@@ -799,7 +874,7 @@ sub _heap_insert_high {
                } else {
                   $_buffer .= '0';
                }
-               print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+               print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
             }
          }
 
@@ -810,7 +885,7 @@ sub _heap_insert_high {
 
       OUTPUT_D_QUN.$LF => sub {                   ## Dequeue from queue (NB)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
 
          chomp($_c  = <$_DAU_R_SOCK>);
          chomp($_id = <$_DAU_R_SOCK>);
@@ -821,7 +896,7 @@ sub _heap_insert_high {
             my $_buffer = $_queue->_dequeue();
 
             unless (defined $_buffer) {
-               print $_DAU_R_SOCK -1 . $LF;
+               print {$_DAU_R_SOCK} -1 . $LF;
             }
             else {
                if (ref $_buffer) {
@@ -829,18 +904,18 @@ sub _heap_insert_high {
                } else {
                   $_buffer .= '0';
                }
-               print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+               print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
             }
          }
          else {
             my @_items; push(@_items, $_queue->_dequeue()) for (1 .. $_c);
 
             unless (defined $_items[0]) {
-               print $_DAU_R_SOCK -1 . $LF;
+               print {$_DAU_R_SOCK} -1 . $LF;
             }
             else {
                my $_buffer = $_MCE->{freeze}(\@_items);
-               print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+               print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
             }
          }
 
@@ -853,18 +928,18 @@ sub _heap_insert_high {
 
       OUTPUT_N_QUE.$LF => sub {                   ## Return number of items
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
 
          chomp($_id = <$_DAU_R_SOCK>);
 
-         print $_DAU_R_SOCK $_queues->{$_id}->_pending() . $LF;
+         print {$_DAU_R_SOCK} $_queues->{$_id}->_pending() . $LF;
 
          return;
       },
 
       OUTPUT_I_QUE.$LF => sub {                   ## Insert into queue
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_i   = <$_DAU_R_SOCK>);
@@ -888,7 +963,7 @@ sub _heap_insert_high {
 
       OUTPUT_I_QUP.$LF => sub {                   ## Insert into queue (p)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_p   = <$_DAU_R_SOCK>);
@@ -915,7 +990,7 @@ sub _heap_insert_high {
 
       OUTPUT_P_QUE.$LF => sub {                   ## Peek into queue
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_i  = <$_DAU_R_SOCK>);
@@ -925,7 +1000,7 @@ sub _heap_insert_high {
          $_buffer = $_queue->_peek($_i);
 
          unless (defined $_buffer) {
-            print $_DAU_R_SOCK -1 . $LF;
+            print {$_DAU_R_SOCK} -1 . $LF;
          }
          else {
             if (ref $_buffer) {
@@ -933,7 +1008,7 @@ sub _heap_insert_high {
             } else {
                $_buffer .= '0';
             }
-            print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+            print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
          }
 
          return;
@@ -941,7 +1016,7 @@ sub _heap_insert_high {
 
       OUTPUT_P_QUP.$LF => sub {                   ## Peek into queue (p)
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_p  = <$_DAU_R_SOCK>);
@@ -952,7 +1027,7 @@ sub _heap_insert_high {
          $_buffer = $_queue->_peekp($_p, $_i);
 
          unless (defined $_buffer) {
-            print $_DAU_R_SOCK -1 . $LF;
+            print {$_DAU_R_SOCK} -1 . $LF;
          }
          else {
             if (ref $_buffer) {
@@ -960,7 +1035,7 @@ sub _heap_insert_high {
             } else {
                $_buffer .= '0';
             }
-            print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+            print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
          }
 
          return;
@@ -968,7 +1043,7 @@ sub _heap_insert_high {
 
       OUTPUT_P_QUH.$LF => sub {                   ## Peek into heap
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_i  = <$_DAU_R_SOCK>);
@@ -978,9 +1053,9 @@ sub _heap_insert_high {
          $_buffer = $_queue->_peekh($_i);
 
          unless (defined $_buffer) {
-            print $_DAU_R_SOCK -1 . $LF;
+            print {$_DAU_R_SOCK} -1 . $LF;
          } else {
-            print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+            print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
          }
 
          return;
@@ -990,7 +1065,7 @@ sub _heap_insert_high {
 
       OUTPUT_H_QUE.$LF => sub {                   ## Return the heap
 
-         $_DAU_R_SOCK = $$_DAU_R_SOCK_REF;
+         $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
          my $_buffer;
 
          chomp($_id = <$_DAU_R_SOCK>);
@@ -998,10 +1073,10 @@ sub _heap_insert_high {
          $_queue  = $_queues->{$_id};
          $_buffer = $_MCE->{freeze}([ $_queue->_heap() ]);
 
-         print $_DAU_R_SOCK length($_buffer) . $LF . $_buffer;
+         print {$_DAU_R_SOCK} length($_buffer) . $LF . $_buffer;
 
          return;
-      }
+      },
 
    );
 
@@ -1031,19 +1106,19 @@ sub _heap_insert_high {
 
       no strict 'refs'; no warnings 'redefine';
 
-      *{ 'MCE::Queue::clear'      } = \&MCE::Queue::_mce_m_clear;
-      *{ 'MCE::Queue::enqueue'    } = \&MCE::Queue::_mce_m_enqueue;
-      *{ 'MCE::Queue::enqueuep'   } = \&MCE::Queue::_mce_m_enqueuep;
-      *{ 'MCE::Queue::dequeue'    } = \&MCE::Queue::_mce_m_dequeue;
-      *{ 'MCE::Queue::dequeue_nb' } = \&MCE::Queue::_mce_m_dequeue_nb;
-      *{ 'MCE::Queue::insert'     } = \&MCE::Queue::_mce_m_insert;
-      *{ 'MCE::Queue::insertp'    } = \&MCE::Queue::_mce_m_insertp;
+      *{ 'MCE::Queue::clear'      } = \&_mce_m_clear;
+      *{ 'MCE::Queue::enqueue'    } = \&_mce_m_enqueue;
+      *{ 'MCE::Queue::enqueuep'   } = \&_mce_m_enqueuep;
+      *{ 'MCE::Queue::dequeue'    } = \&_mce_m_dequeue;
+      *{ 'MCE::Queue::dequeue_nb' } = \&_mce_m_dequeue_nb;
+      *{ 'MCE::Queue::insert'     } = \&_mce_m_insert;
+      *{ 'MCE::Queue::insertp'    } = \&_mce_m_insertp;
 
-      *{ 'MCE::Queue::pending'    } = \&MCE::Queue::_pending;
-      *{ 'MCE::Queue::peek'       } = \&MCE::Queue::_peek;
-      *{ 'MCE::Queue::peekp'      } = \&MCE::Queue::_peekp;
-      *{ 'MCE::Queue::peekh'      } = \&MCE::Queue::_peekh;
-      *{ 'MCE::Queue::heap'       } = \&MCE::Queue::_heap;
+      *{ 'MCE::Queue::pending'    } = \&_pending;
+      *{ 'MCE::Queue::peek'       } = \&_peek;
+      *{ 'MCE::Queue::peekp'      } = \&_peekp;
+      *{ 'MCE::Queue::peekh'      } = \&_peekh;
+      *{ 'MCE::Queue::heap'       } = \&_heap;
 
       return;
    }
@@ -1061,12 +1136,10 @@ sub _mce_m_clear {
    my $_next; my $_queue = shift;
 
    if ($_queue->{_fast}) {
-      warn "MCE::Queue: 'clear' not allowed for 'fast => 1' option\n";
+      warn "MCE::Queue: (clear) not allowed for fast => 1\n";
    }
    else {
-      sysread $_queue->{_qr_sock}, $_next, 1
-         if ($_queue->_has_data());
-
+      sysread $_queue->{_qr_sock}, $_next, 1 if ($_queue->_has_data());
       $_queue->_clear();
    }
 
@@ -1091,7 +1164,7 @@ sub _mce_m_enqueuep {
 
    my $_queue = shift; my $_p = shift;
 
-   _croak("MCE::Queue::enqueuep: 'priority' is not an integer")
+   _croak('MCE::Queue::enqueuep: (priority) is not an integer')
       if (!looks_like_number($_p) || int($_p) != $_p);
 
    return unless (scalar @_);
@@ -1149,7 +1222,7 @@ sub _mce_m_dequeue_nb {
    my $_queue = $_[0];
 
    if ($_queue->{_fast}) {
-      warn "MCE::Queue: 'dequeue_nb' not allowed for 'fast => 1' option\n";
+      warn "MCE::Queue: (dequeue_nb) not allowed for fast => 1\n";
       return;
    }
    else {
@@ -1166,7 +1239,7 @@ sub _mce_m_insert {
 
    my $_queue = shift; my $_i = shift;
 
-   _croak("MCE::Queue::insert: 'index' is not an integer")
+   _croak('MCE::Queue::insert: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
 
    return unless (scalar @_);
@@ -1183,10 +1256,10 @@ sub _mce_m_insertp {
 
    my $_queue = shift; my $_p = shift; my $_i = shift;
 
-   _croak("MCE::Queue::insertp: 'priority' is not an integer")
+   _croak('MCE::Queue::insertp: (priority) is not an integer')
       if (!looks_like_number($_p) || int($_p) != $_p);
 
-   _croak("MCE::Queue::insertp: 'index' is not an integer")
+   _croak('MCE::Queue::insertp: (index) is not an integer')
       if (!looks_like_number($_i) || int($_i) != $_i);
 
    return unless (scalar @_);
@@ -1227,18 +1300,18 @@ sub _mce_m_insertp {
 
       no strict 'refs'; no warnings 'redefine';
 
-      *{ 'MCE::Queue::clear'      } = \&MCE::Queue::_mce_w_clear;
-      *{ 'MCE::Queue::enqueue'    } = \&MCE::Queue::_mce_w_enqueue;
-      *{ 'MCE::Queue::enqueuep'   } = \&MCE::Queue::_mce_w_enqueuep;
-      *{ 'MCE::Queue::dequeue'    } = \&MCE::Queue::_mce_w_dequeue;
-      *{ 'MCE::Queue::dequeue_nb' } = \&MCE::Queue::_mce_w_dequeue_nb;
-      *{ 'MCE::Queue::pending'    } = \&MCE::Queue::_mce_w_pending;
-      *{ 'MCE::Queue::insert'     } = \&MCE::Queue::_mce_w_insert;
-      *{ 'MCE::Queue::insertp'    } = \&MCE::Queue::_mce_w_insertp;
-      *{ 'MCE::Queue::peek'       } = \&MCE::Queue::_mce_w_peek;
-      *{ 'MCE::Queue::peekp'      } = \&MCE::Queue::_mce_w_peekp;
-      *{ 'MCE::Queue::peekh'      } = \&MCE::Queue::_mce_w_peekh;
-      *{ 'MCE::Queue::heap'       } = \&MCE::Queue::_mce_w_heap;
+      *{ 'MCE::Queue::clear'      } = \&_mce_w_clear;
+      *{ 'MCE::Queue::enqueue'    } = \&_mce_w_enqueue;
+      *{ 'MCE::Queue::enqueuep'   } = \&_mce_w_enqueuep;
+      *{ 'MCE::Queue::dequeue'    } = \&_mce_w_dequeue;
+      *{ 'MCE::Queue::dequeue_nb' } = \&_mce_w_dequeue_nb;
+      *{ 'MCE::Queue::pending'    } = \&_mce_w_pending;
+      *{ 'MCE::Queue::insert'     } = \&_mce_w_insert;
+      *{ 'MCE::Queue::insertp'    } = \&_mce_w_insertp;
+      *{ 'MCE::Queue::peek'       } = \&_mce_w_peek;
+      *{ 'MCE::Queue::peekp'      } = \&_mce_w_peekp;
+      *{ 'MCE::Queue::peekh'      } = \&_mce_w_peekh;
+      *{ 'MCE::Queue::heap'       } = \&_mce_w_heap;
 
       return;
    }
@@ -1249,19 +1322,18 @@ sub _mce_m_insertp {
 
       my $_queue = shift;
 
-      return $_queue->_clear()
-         if (exists $_queue->{_standalone});
+      return $_queue->_clear() if (exists $_queue->{_standalone});
 
       if ($_queue->{_fast}) {
-         warn "MCE::Queue: 'clear' not allowed for 'fast => 1' option\n";
+         warn "MCE::Queue: (clear) not allowed for fast => 1\n";
       }
       else {
          local $\ = undef if (defined $\);
          local $/ = $LF if (!$/ || $/ ne $LF);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_C_QUE . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_C_QUE . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_queue->{_id} . $LF;
 
          <$_DAU_W_SOCK>;
          flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
@@ -1276,8 +1348,7 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift;
 
-      return $_queue->_enqueue(@_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_enqueue(@_) if (exists $_queue->{_standalone});
 
       if (@_ > 1) {
          $_tag = OUTPUT_A_QUE;
@@ -1301,8 +1372,8 @@ sub _mce_m_insertp {
       local $\ = undef if (defined $\);
 
       flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-      print $_DAT_W_SOCK $_tag . $LF . $_chn . $LF;
-      print $_DAU_W_SOCK $_buffer;
+      print {$_DAT_W_SOCK} $_tag . $LF . $_chn . $LF;
+      print {$_DAU_W_SOCK} $_buffer;
       flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
 
       return;
@@ -1312,11 +1383,10 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift; my $_p = shift;
 
-      _croak("MCE::Queue::enqueuep: 'priority' is not an integer")
+      _croak('MCE::Queue::enqueuep: (priority) is not an integer')
          if (!looks_like_number($_p) || int($_p) != $_p);
 
-      return $_queue->_enqueuep($_p, @_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_enqueuep($_p, @_) if (exists $_queue->{_standalone});
 
       if (@_ > 1) {
          $_tag = OUTPUT_A_QUP;
@@ -1345,8 +1415,8 @@ sub _mce_m_insertp {
       local $\ = undef if (defined $\);
 
       flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-      print $_DAT_W_SOCK $_tag . $LF . $_chn . $LF;
-      print $_DAU_W_SOCK $_buffer;
+      print {$_DAT_W_SOCK} $_tag . $LF . $_chn . $LF;
+      print {$_DAU_W_SOCK} $_buffer;
       flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
 
       return;
@@ -1358,12 +1428,11 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift;
 
-      return $_queue->_dequeue(@_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_dequeue(@_) if (exists $_queue->{_standalone});
 
       if (defined $_[0] && $_[0] ne '1') {
          $_c = $_[0];
-         _croak("MCE::Queue::dequeue: 'count argument' is not valid")
+         _croak('MCE::Queue::dequeue: (count argument) is not valid')
             if (!looks_like_number($_c) || int($_c) != $_c || $_c < 1);
       }
       else {
@@ -1377,14 +1446,14 @@ sub _mce_m_insertp {
          sysread $_queue->{_qr_sock}, $_next, 1;  ## Wait here
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_D_QUE . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_c . $LF . $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_D_QUE . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_c . $LF . $_queue->{_id} . $LF;
 
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {
             flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
-            return undef;
+            return undef;   # Do not change this to return;
          }
 
          read  $_DAU_W_SOCK, $_buffer, $_len;
@@ -1402,17 +1471,16 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift;
 
-      return $_queue->_dequeue(@_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_dequeue(@_) if (exists $_queue->{_standalone});
 
       if ($_queue->{_fast}) {
-         warn "MCE::Queue: 'dequeue_nb' not allowed for 'fast => 1' option\n";
+         warn "MCE::Queue: (dequeue_nb) not allowed for fast => 1\n";
          return;
       }
 
       if (defined $_[0] && $_[0] ne '1') {
          $_c = $_[0];
-         _croak("MCE::Queue::dequeue: 'count argument' is not valid")
+         _croak('MCE::Queue::dequeue: (count argument) is not valid')
             if (!looks_like_number($_c) || int($_c) != $_c || $_c < 1);
       }
       else {
@@ -1424,14 +1492,14 @@ sub _mce_m_insertp {
          local $/ = $LF if (!$/ || $/ ne $LF);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_D_QUN . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_c . $LF . $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_D_QUN . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_c . $LF . $_queue->{_id} . $LF;
 
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {
             flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
-            return undef;
+            return undef;   # Do not change this to return;
          }
 
          read  $_DAU_W_SOCK, $_buffer, $_len;
@@ -1451,15 +1519,14 @@ sub _mce_m_insertp {
 
       my $_queue = shift;
 
-      return $_queue->_pending(@_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_pending(@_) if (exists $_queue->{_standalone});
 
       local $\ = undef if (defined $\);
       local $/ = $LF if (!$/ || $/ ne $LF);
 
       flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-      print $_DAT_W_SOCK OUTPUT_N_QUE . $LF . $_chn . $LF;
-      print $_DAU_W_SOCK $_queue->{_id} . $LF;
+      print {$_DAT_W_SOCK} OUTPUT_N_QUE . $LF . $_chn . $LF;
+      print {$_DAU_W_SOCK} $_queue->{_id} . $LF;
 
       chomp($_pending = <$_DAU_W_SOCK>);
       flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
@@ -1471,11 +1538,10 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift; my $_i = shift;
 
-      _croak("MCE::Queue::insert: 'index' is not an integer")
+      _croak('MCE::Queue::insert: (index) is not an integer')
          if (!looks_like_number($_i) || int($_i) != $_i);
 
-      return $_queue->_insert($_i, @_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_insert($_i, @_) if (exists $_queue->{_standalone});
 
       if (@_ > 1 || ref $_[0]) {
          $_buffer = $_MCE->{freeze}(\@_) . '1';
@@ -1490,8 +1556,8 @@ sub _mce_m_insertp {
       local $\ = undef if (defined $\);
 
       flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-      print $_DAT_W_SOCK OUTPUT_I_QUE . $LF . $_chn . $LF;
-      print $_DAU_W_SOCK $_buffer;
+      print {$_DAT_W_SOCK} OUTPUT_I_QUE . $LF . $_chn . $LF;
+      print {$_DAU_W_SOCK} $_buffer;
       flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
 
       return;
@@ -1501,14 +1567,13 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift; my $_p = shift; my $_i = shift;
 
-      _croak("MCE::Queue::insertp: 'priority' is not an integer")
+      _croak('MCE::Queue::insertp: (priority) is not an integer')
          if (!looks_like_number($_p) || int($_p) != $_p);
 
-      _croak("MCE::Queue::insertp: 'index' is not an integer")
+      _croak('MCE::Queue::insertp: (index) is not an integer')
          if (!looks_like_number($_i) || int($_i) != $_i);
 
-      return $_queue->_insertp($_p, $_i, @_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_insertp($_p, $_i, @_) if (exists $_queue->{_standalone});
 
       if (@_ > 1 || ref $_[0]) {
          $_buffer = $_MCE->{freeze}(\@_) . '1';
@@ -1523,8 +1588,8 @@ sub _mce_m_insertp {
       local $\ = undef if (defined $\);
 
       flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-      print $_DAT_W_SOCK OUTPUT_I_QUP . $LF . $_chn . $LF;
-      print $_DAU_W_SOCK $_buffer;
+      print {$_DAT_W_SOCK} OUTPUT_I_QUP . $LF . $_chn . $LF;
+      print {$_DAU_W_SOCK} $_buffer;
       flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
 
       return;
@@ -1536,25 +1601,24 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift; my $_i = shift || 0;
 
-      _croak("MCE::Queue::peek: 'index' is not an integer")
+      _croak('MCE::Queue::peek: (index) is not an integer')
          if (!looks_like_number($_i) || int($_i) != $_i);
 
-      return $_queue->_peek($_i, @_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_peek($_i, @_) if (exists $_queue->{_standalone});
 
       {
          local $\ = undef if (defined $\);
          local $/ = $LF if (!$/ || $/ ne $LF);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_P_QUE . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_i . $LF . $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_P_QUE . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_i . $LF . $_queue->{_id} . $LF;
 
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {
             flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
-            return undef;
+            return undef;   # Do not change this to return;
          }
 
          read  $_DAU_W_SOCK, $_buffer, $_len;
@@ -1568,28 +1632,27 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift; my $_p = shift; my $_i = shift || 0;
 
-      _croak("MCE::Queue::peekp: 'priority' is not an integer")
+      _croak('MCE::Queue::peekp: (priority) is not an integer')
          if (!looks_like_number($_p) || int($_p) != $_p);
 
-      _croak("MCE::Queue::peekp: 'index' is not an integer")
+      _croak('MCE::Queue::peekp: (index) is not an integer')
          if (!looks_like_number($_i) || int($_i) != $_i);
 
-      return $_queue->_peekp($_p, $_i, @_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_peekp($_p, $_i, @_) if (exists $_queue->{_standalone});
 
       {
          local $\ = undef if (defined $\);
          local $/ = $LF if (!$/ || $/ ne $LF);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_P_QUP . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_p . $LF . $_i . $LF . $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_P_QUP . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_p . $LF . $_i . $LF . $_queue->{_id} . $LF;
 
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {
             flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
-            return undef;
+            return undef;   # Do not change this to return;
          }
 
          read  $_DAU_W_SOCK, $_buffer, $_len;
@@ -1603,25 +1666,24 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift; my $_i = shift || 0;
 
-      _croak("MCE::Queue::peekh: 'index' is not an integer")
+      _croak('MCE::Queue::peekh: (index) is not an integer')
          if (!looks_like_number($_i) || int($_i) != $_i);
 
-      return $_queue->_peekh($_i, @_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_peekh($_i, @_) if (exists $_queue->{_standalone});
 
       {
          local $\ = undef if (defined $\);
          local $/ = $LF if (!$/ || $/ ne $LF);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_P_QUH . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_i . $LF . $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_P_QUH . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_i . $LF . $_queue->{_id} . $LF;
 
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {
             flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
-            return undef;
+            return undef;   # Do not change this to return;
          }
 
          read  $_DAU_W_SOCK, $_buffer, $_len;
@@ -1637,16 +1699,15 @@ sub _mce_m_insertp {
 
       my $_buffer; my $_queue = shift;
 
-      return $_queue->_heap(@_)
-         if (exists $_queue->{_standalone});
+      return $_queue->_heap(@_) if (exists $_queue->{_standalone});
 
       {
          local $\ = undef if (defined $\);
          local $/ = $LF if (!$/ || $/ ne $LF);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_H_QUE . $LF . $_chn . $LF;
-         print $_DAU_W_SOCK $_queue->{_id} . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_H_QUE . $LF . $_chn . $LF;
+         print {$_DAU_W_SOCK} $_queue->{_id} . $LF;
 
          chomp($_len = <$_DAU_W_SOCK>);
 
@@ -1671,11 +1732,11 @@ __END__
 
 =head1 NAME
 
-MCE::Queue - Hybrid queues (normal including priority) for Many-core Engine
+MCE::Queue - Hybrid queues (normal and priority) for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.520
+This document describes MCE::Queue version 1.521
 
 =head1 SYNOPSIS
 
@@ -1754,47 +1815,26 @@ process. MCE::Queue also allows for a worker to create any number of queues
 locally not available to other workers including the manager process. Think
 of a CPU having L3 (shared) and L1 (local) cache.
 
-The structure for the MCE::Queue object is provided below. It allows for normal
-queues to run as fast as an array. Data for priority queues are also nearly as
-fast due to having a brief lookup if the priority exists in the hash including
-adding/removal of the key. The heap array contains only priorities, not the
-data itself. This makes the management of the heap order only as necessary
-while running.
-
-   ## Normal queue data
-   $_queue->{_datq} = [];
-
-   ## Priority data { p1 => [ ], p2 => [ ], pN => [ ] }
-   $_queue->{_datp} = {};
-
-   ## Priority heap [ pN, p2, p1 ] ## in heap order
-   ## fyi, _datp will always dequeue before _datq
-   $_queue->{_heap} = [];
-
-   ## Priority order (default)
-   $_queue->{_porder} = $MCE::Queue::HIGHEST;
-
-   ## Priority type (default)
-   $_queue->{_type} = $MCE::Queue::FIFO;
-
 =head1 IMPORT
 
-Three options are available for overriding the default value for new queues
-(porder applies to priority queues only).
+Three options are available for overriding the default value for new queues.
+The porder option applies to priority queues only.
 
    use MCE::Queue porder => $MCE::Queue::HIGHEST,
                   type   => $MCE::Queue::FIFO,
                   fast   => 0;
 
-   use MCE::Queue;       ## same as above
+   use MCE::Queue;                # Same as above
 
-       porder => $HIGHEST = Highest priority items are dequeued first
-                 $LOWEST  = Lowest priority items are dequeued first
+   ## Possible values
 
-       type   => $FIFO    = First in, first out
-                 $LILO    =    (Synonym for FIFO)
-                 $LIFO    = Last in, first out
-                 $FILO    =    (Synonym for LIFO)
+   porder => $MCE::Queue::HIGHEST # Highest priority items dequeue first
+             $MCE::Queue::LOWEST  # Lowest priority items dequeue first
+
+   type   => $MCE::Queue::FIFO    # First in, first out
+             $MCE::Queue::LIFO    # Last in, first out
+             $MCE::Queue::LILO    # (Synonym for FIFO)
+             $MCE::Queue::FILO    # (Synonym for LIFO)
 
 =head1 THREE RUN MODES
 
@@ -1805,29 +1845,26 @@ MCE::Queue can be utilized under the following conditions:
 
 =over 3
 
-=item A) Loading MCE prior to inclusion of MCE::Queue
+=item A) MCE is included prior to inclusion of MCE::Queue
 
 The dequeue method blocks for the manager process including workers. All data
-resides under the manager process. Workers send/request data through IPC.
+resides under the manager process. Workers send/request data via IPC.
 
-Creating a queue from the worker process will cause the queue to run in local
-mode. The data resides under the worker process and not available to other
-workers including the manager process.
+Creating a queue from within the worker process will cause the queue to run in
+local mode (C). The data resides under the worker process and not available to
+other workers including the manager process.
 
-=item B) Loading MCE::Queue prior to inclusion of MCE
+=item B) MCE::Queue is included prior to inclusion of MCE
 
-Queues behave as if running in local mode for the manager including workers
+Queues behave as if running in local mode for the manager and worker processes
 for the duration of the script. I cannot think of a use-case for this, but
-wanted to mention the behavior in the event MCE::Queue is loaded prior to
-MCE.
+mentioning the behavior in the event MCE::Queue is included prior to MCE.
 
-=item C) Loading MCE::Queue without MCE
+=item C) MCE::Queue without inclusion of MCE
 
-The dequeue method is non-blocking in this fashion. This behaves like local
-mode when MCE is not present. As with local queuing, this mode is speedy due
-to minimum overhead and zero IPC.
-
-Essentially, the MCE module is not a prerequisite for using MCE::Queue.
+The dequeue method is non-blocking. Queues behave similarly to local queuing.
+This mode is efficient due to minimum overhead and zero IPC behind the scene.
+Hence, MCE is not required to use MCE::Queue.
 
 =back
 
@@ -1839,7 +1876,7 @@ Essentially, the MCE module is not a prerequisite for using MCE::Queue.
 
 This creates a new queue. Available options are queue, porder, type, fast, and
 gather. The gather option is mainly for running with MCE and wanting to pass
-item(s) to a callback function for adding to the queue.
+item(s) to a callback function for appending to the queue.
 
 The 'fast' option speeds up ->dequeue ops and not enabled by default. It is
 beneficial for queues not calling ->clear or ->dequeue_nb and not altering the
@@ -1860,12 +1897,12 @@ enable 'fast' if varying $count dynamically.
 
    my $q7 = MCE::Queue->new( fast => 1 );
 
-Multiple queues may point to the same callback function. Please note that the
-first argument for the callback function is the queue object itself.
+Multiple queues may point to the same callback function. The first argument
+for the callback is the queue object.
 
    sub _append {
-      my ($Q, @items) = @_;
-      $Q->enqueue(@items);
+      my ($q, @items) = @_;
+      $q->enqueue(@items);
    }
 
    my $q7 = MCE::Queue->new( gather => \&_append );
@@ -1874,10 +1911,9 @@ first argument for the callback function is the queue object itself.
    ## Items are diverted to the gather callback function.
    $q7->enqueue( 'apple', 'orange' );
 
-The gather option is useful when wanting to temporarily store items in a
-holding area until output order can be obtained. Although a queue is not
-required to gather data in MCE, this is simply a demonstration of the
-gather option in the context of a queue.
+The gather option allows one to store items temporarily while ensuring output
+order. Although a queue object is not required, this is simply a demonstration
+of the gather option in the context of a queue.
 
    use MCE;
    use MCE::Queue;
@@ -1885,13 +1921,13 @@ gather option in the context of a queue.
    my ($_order_id, %_tmp);
 
    sub _preserve_order {
-      my ($Q, $chunk_id, $result) = @_;
+      my ($q, $chunk_id, $result) = @_;
 
       $_tmp{$chunk_id} = $result;
 
       while (1) {
          last unless exists $_tmp{$_order_id};
-         $Q->enqueue( $_tmp{$_order_id} );
+         $q->enqueue( $_tmp{$_order_id} );
          delete $_tmp{$_order_id++};
       }
 
@@ -1918,12 +1954,12 @@ gather option in the context of a queue.
 =item ->clear ( void )
 
 Clears the queue of any items. This has the effect of nulling the queue.
-Each queue comes with a socket used for blocking behind the scene. Use
-the clear method when wanting to clear the content of the array.
+Each queue comes with a socket for blocking behind the scene. Use the clear
+method when wanting to clear the content of the array.
 
    my @a; my $q = MCE::Queue->new( queue => \@a );
 
-   @a = ();     ## no, the block socket may become out of sync
+   @a = ();     ## bad, the blocking socket may become out of sync
    $q->clear;   ## ok
 
 =item ->enqueue ( $item [, $item, ... ] )
@@ -1937,8 +1973,7 @@ Appends a list of items onto the end of the priority queue with priority.
 =item ->dequeue ( [ $count ] )
 
 Returns the requested number of items (default is 1) from the queue. Priority
-data will always dequeue first from the priority queue before any data from
-the normal queue.
+data will always dequeue first before any data from the normal queue.
 
 The method will block if the queue contains zero items. If the queue contains
 fewer than the requested number of items, the method will not block, but
@@ -1957,101 +1992,137 @@ and will return undef in the absence of data from the queue.
 
 =item ->insert ( $index, $item [, $item, ... ] )
 
-Adds the list of items to the queue at the specified index.
+Adds the list of items to the queue at the specified index position (0 is the
+head of the list). The head of the queue is that item which would be removed
+by a call to dequeue.
+
+   $q = MCE::Queue->new( type => $MCE::Queue::FIFO );
+   $q->enqueue(1, 2, 3, 4);
+   $q->insert(1, 'foo', 'bar'); 
+   # Queue now contains: 1, foo, bar, 2, 3, 4
+
+   $q = MCE::Queue->new( type => $MCE::Queue::LIFO );
+   $q->enqueue(1, 2, 3, 4);
+   $q->insert(1, 'foo', 'bar'); 
+   # Queue now contains: 1, 2, 3, 'foo', 'bar', 4
 
 =item ->insertp ( $p, $index, $item [, $item, ... ] )
 
-Adds the list of items to the queue at the specified index with priority.
+Adds the list of items to the queue at the specified index position with
+priority. The behavior is similarly to insert otherwise.
 
 =item ->pending ( void )
 
-Returns the number of items in the queue. This includes both normal and
-priority data.
+Returns the number of items in the queue. The count includes both normal
+and priority data.
+
+   $q = MCE::Queue->new();
+   $q->enqueuep(5, 'foo', 'bar');   # priority queue
+   $q->enqueue('sunny', 'day');     # normal queue
+
+   print $q->pending(), "\n";
+   # Output: 4
 
 =item ->peek ( [ $index ] )
 
 Returns an item from the normal queue, at the specified index, without
 dequeuing anything. It defaults to the head of the queue if index is not
-specified.
+specified. The head of the queue is that item which would be removed by a
+call to dequeue. Negative index values are supported, similarly to arrays.
+
+   $q = MCE::Queue->new( type => $MCE::Queue::FIFO );
+   $q->enqueue(1, 2, 3, 4, 5);
+
+   print $q->peek(1), ' ', $q->peek(-2), "\n";
+   # Output: 2 4
+
+   $q = MCE::Queue->new( type => $MCE::Queue::LIFO );
+   $q->enqueue(1, 2, 3, 4, 5);
+
+   print $q->peek(1), ' ', $q->peek(-2), "\n";
+   # Output: 4 2
 
 =item ->peekp ( $p [, $index ] )
 
 Returns an item from the queue with priority, at the specified index, without
 dequeuing anything. It defaults to the head of the queue if index is not
-specified.
+specified. The behavior is similarly to peek otherwise
 
 =item ->peekh ( [ $index ] )
 
 Returns an item from the heap, at the specified index.
+
+   $q = MCE::Queue->new( porder => $MCE::Queue::HIGHEST );
+   $q->enqueuep(5, 'foo');
+   $q->enqueuep(6, 'bar');
+   $q->enqueuep(4, 'sun');
+
+   print $q->peekh(0), "\n";
+   # Output: 6
+
+   $q = MCE::Queue->new( porder => $MCE::Queue::LOWEST );
+   $q->enqueuep(5, 'foo');
+   $q->enqueuep(6, 'bar');
+   $q->enqueuep(4, 'sun');
+
+   print $q->peekh(0), "\n";
+   # Output: 4
 
 =item ->heap ( void )
 
 Returns an array containing the heap data. Heap data consists of priority
 numbers, not the data.
 
+   @h = $q->heap;   # $MCE::Queue::HIGHEST
+   # Heap contains: 6, 5, 4
+   
+   @h = $q->heap;   # $MCE::Queue::LOWEST
+   # Heap contains: 4, 5, 6
+
 =back
 
 =head1 ACKNOWLEDGEMENTS
 
-The main reason for writing MCE::Queue was to have a Thread::Queue-like module
-for workers spawned as children. I was pleasantly surprised at the number of
-modules on CPAN for queuing. What stood out immediately were all the priority
-queues, heap queues, and whether (FIFO/LIFO) or (highest/lowest first) options
-are available. Hence, the reason for MCE::Queue supporting both normal
-and priority queues.
-
-The following provides a list of resources I've read in helping me create
-MCE::Queue for MCE.
-
 =over 3
 
-=item L<POE::Queue::Array>
+=item L<POE::Queue::Array|POE::Queue::Array>
 
 Two if statements were adopted for checking if the item belongs at the end or
 head of the queue.
 
-=item L<List::Binary::Search>
+=item L<List::BinarySearch|List::BinarySearch>
 
-After glancing over the bsearch_num_pos method for returning the best insert
-position, a couple variations of that were in order for MCE::Queue to
-accommodate the highest/lowest order routines.
+The bsearch_num_pos method is helpful for accommodating highest/lowest order.
 
-=item L<Heap-Priority>, L<List::Priority>
+=item L<List::Priority|List::Priority>
 
-At this point, I thought why not have both normal queues and priority queues
-be efficient. And with that in mind, also provide options to allow folks to
-choose LIFO/LILO, and highest/lowest order for the queue. The data structure
-in MCE::Queue is described above.
+MCE::Queue supports both normal and priority queues.
 
-MCE workers also benefit from being able to create local queues not available
-to other workers including the manager process. Hence, the reason for the 3
-run modes described at the beginning of this document.
+=item L<Thread::Queue|Thread::Queue>
 
-=item L<Thread::Queue>
+Thread::Queue is used as a template for identifying and documenting the methods.
+MCE::Queue is not fully compatible due to supporting normal and priority queues
+simultaneously. E.g.
 
-Being that MCE supports both children and threads, Thread::Queue was used
-as a template for identifying and documenting the methods in MCE::Queue.
-Although not 100% compatible, pay close attention to the dequeue method
-when requesting the number of items to dequeue.
+   $q->enqueuep( $p, $item [, $item, ... ] );    ## Priority queue
+   $q->enqueue( $item [, $item, ... ] );         ## Normal queue
 
-   ->enqueuep( $p, $item [, $item, ... ] );    ## Extension (p)
-   ->enqueue( $item [, $item, ... ] );
+   $q->dequeue( [ $count ] );      ## Priority data dequeues first
+   $q->dequeue_nb( [ $count ] );   ## Behavior is not the same
 
-   ->dequeue( [ $count ] );      ## Priority data dequeues first
-   ->dequeue_nb( [ $count ] );
+   $q->pending();                  ## Counts both normal/priority data
+                                   ## in the queue
 
-   ->pending();                  ## Counts both normal/priority data
-                                 ## in the queue
+=item L<Parallel::DataPipe|Parallel::DataPipe>
 
-=item L<Parallel-DataPipe>
-
-The idea for a queue recursion example came from reading this sysnopsis.
+The recursion example, in the sysopsis above, was largely adopted from this
+module.
 
 =back
 
 =head1 INDEX
 
-L<MCE>
+L<MCE|MCE>
 
 =head1 AUTHOR
 

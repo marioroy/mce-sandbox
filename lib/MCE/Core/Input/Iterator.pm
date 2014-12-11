@@ -11,14 +11,14 @@
 
 package MCE::Core::Input::Iterator;
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+use strict;
+use warnings;
+
+our $VERSION = '1.521';
 
 ## Items below are folded into MCE.
 
 package MCE;
-
-use strict;
-use warnings;
 
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
@@ -37,9 +37,9 @@ sub _worker_user_iterator {
 
    @_ = ();
 
-   die "Private method called" unless (caller)[0]->isa( ref($self) );
+   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
-   _croak("MCE::_worker_user_iterator: 'user_func' is not specified")
+   _croak('MCE::_worker_user_iterator: (user_func) is not specified')
       unless (defined $self->{user_func});
 
    my $_chn         = $self->{_chn};
@@ -72,7 +72,7 @@ sub _worker_user_iterator {
          local $\ = undef if (defined $\); local $/ = $LF if ($_I_FLG);
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
-         print $_DAT_W_SOCK OUTPUT_U_ITR . $LF . $_chn . $LF;
+         print {$_DAT_W_SOCK} OUTPUT_U_ITR . $LF . $_chn . $LF;
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {

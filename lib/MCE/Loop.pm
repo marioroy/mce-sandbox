@@ -9,12 +9,16 @@ package MCE::Loop;
 use strict;
 use warnings;
 
+## no critic (BuiltinFunctions::ProhibitStringyEval)
+## no critic (Subroutines::ProhibitSubroutinePrototypes)
+## no critic (TestingAndDebugging::ProhibitNoStrict)
+
 use Scalar::Util qw( looks_like_number );
 
 use MCE;
 use MCE::Util;
 
-our $VERSION = '1.520'; $VERSION = eval $VERSION;
+our $VERSION = '1.521';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -32,15 +36,16 @@ sub import {
    my $_class = shift; return if ($_loaded++);
 
    ## Process module arguments.
-   while (my $_arg = shift) {
+   while (my $_argument = shift) {
+      my $_arg = lc $_argument;
 
-      $MAX_WORKERS  = shift and next if ( $_arg =~ /^max_workers$/i );
-      $CHUNK_SIZE   = shift and next if ( $_arg =~ /^chunk_size$/i );
-      $MCE::TMP_DIR = shift and next if ( $_arg =~ /^tmp_dir$/i );
-      $MCE::FREEZE  = shift and next if ( $_arg =~ /^freeze$/i );
-      $MCE::THAW    = shift and next if ( $_arg =~ /^thaw$/i );
+      $MAX_WORKERS  = shift and next if ( $_arg eq 'max_workers' );
+      $CHUNK_SIZE   = shift and next if ( $_arg eq 'chunk_size' );
+      $MCE::TMP_DIR = shift and next if ( $_arg eq 'tmp_dir' );
+      $MCE::FREEZE  = shift and next if ( $_arg eq 'freeze' );
+      $MCE::THAW    = shift and next if ( $_arg eq 'thaw' );
 
-      if ( $_arg =~ /^sereal$/i ) {
+      if ( $_arg eq 'sereal' ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
             unless ($@) {
@@ -51,7 +56,7 @@ sub import {
          next;
       }
 
-      _croak("$_tag::import: '$_arg' is not a valid module argument");
+      _croak("$_tag::import: ($_argument) is not a valid module argument");
    }
 
    $MAX_WORKERS = MCE::Util::_parse_max_workers($MAX_WORKERS);
@@ -62,7 +67,7 @@ sub import {
 
    ## Import functions.
    no strict 'refs'; no warnings 'redefine';
-   my $_package = caller();
+   my $_package = caller;
 
    *{ $_package . '::mce_loop_f' } = \&mce_loop_f;
    *{ $_package . '::mce_loop_s' } = \&mce_loop_s;
@@ -91,7 +96,7 @@ sub init (@) {
       );
    }
 
-   _croak("$_tag: 'argument' is not a HASH reference")
+   _croak("$_tag: (argument) is not a HASH reference")
       unless (ref $_[0] eq 'HASH');
 
    MCE::Loop::finish(); $_params = shift;
@@ -128,17 +133,17 @@ sub mce_loop_f (&@) {
       $_params = {};
    }
 
-   if (defined $_file && ref $_file eq "" && $_file ne "") {
-      _croak("$_tag: '$_file' does not exist") unless (-e $_file);
-      _croak("$_tag: '$_file' is not readable") unless (-r $_file);
-      _croak("$_tag: '$_file' is not a plain file") unless (-f $_file);
+   if (defined $_file && ref $_file eq '' && $_file ne '') {
+      _croak("$_tag: ($_file) does not exist") unless (-e $_file);
+      _croak("$_tag: ($_file) is not readable") unless (-r $_file);
+      _croak("$_tag: ($_file) is not a plain file") unless (-f $_file);
       $_params->{_file} = $_file;
    }
    elsif (ref $_file eq 'GLOB' || ref $_file eq 'SCALAR' || ref($_file) =~ /^IO::/) {
       $_params->{_file} = $_file;
    }
    else {
-      _croak("$_tag: 'file' is not specified or valid");
+      _croak("$_tag: (file) is not specified or valid");
    }
 
    @_ = ();
@@ -174,18 +179,18 @@ sub mce_loop_s (&@) {
       $_begin = $_[0]->[0]; $_end = $_[0]->[1];
       $_params->{sequence} = $_[0];
    }
-   elsif (ref $_[0] eq "") {
+   elsif (ref $_[0] eq '') {
       $_begin = $_[0]; $_end = $_[1];
       $_params->{sequence} = [ @_ ];
    }
    else {
-      _croak("$_tag: 'sequence' is not specified or valid");
+      _croak("$_tag: (sequence) is not specified or valid");
    }
 
-   _croak("$_tag: 'begin' is not specified for sequence")
+   _croak("$_tag: (begin) is not specified for sequence")
       unless (defined $_begin);
 
-   _croak("$_tag: 'end' is not specified for sequence")
+   _croak("$_tag: (end) is not specified for sequence")
       unless (defined $_end);
 
    @_ = ();
@@ -246,7 +251,7 @@ sub mce_loop (&@) {
 
       my %_options = (
          max_workers => $_max_workers, task_name => $_tag,
-         user_func => $_code
+         user_func => $_code,
       );
 
       if (defined $_params) {
@@ -254,7 +259,7 @@ sub mce_loop (&@) {
             next if ($_ eq 'input_data');
             next if ($_ eq 'chunk_size');
 
-            _croak("MCE::Loop: '$_' is not a valid constructor argument")
+            _croak("MCE::Loop: ($_) is not a valid constructor argument")
                unless (exists $MCE::_valid_fields_new{$_});
 
             $_options{$_} = $_params->{$_};
@@ -275,8 +280,12 @@ sub mce_loop (&@) {
       $_MCE->process({ chunk_size => $_chunk_size }, \@_);
    }
    else {
-      $_MCE->run({ chunk_size => $_chunk_size }, 0)
-         if (defined $_params && exists $_params->{sequence});
+      if (defined $_params && exists $_params->{sequence}) {
+         $_MCE->run({
+            chunk_size => $_chunk_size, sequence => $_params->{sequence}
+         }, 0);
+         delete $_MCE->{sequence};
+      }
    }
 
    delete $_MCE->{gather} if (defined $_wa);
@@ -299,12 +308,13 @@ sub _croak {
 
 sub _validate_number {
 
-   my $_n = $_[0]; my $_key = $_[1];
+   my ($_n, $_key) = @_;
 
    $_n =~ s/K\z//i; $_n =~ s/M\z//i;
 
-   _croak("$_tag: '$_key' is not valid")
-      if (!looks_like_number($_n) || int($_n) != $_n || $_n < 1);
+   if (!looks_like_number($_n) || int($_n) != $_n || $_n < 1) {
+      _croak("$_tag: ($_key) is not valid");
+   }
 
    return;
 }
@@ -325,14 +335,14 @@ MCE::Loop - Parallel loop model for building creative loops
 
 =head1 VERSION
 
-This document describes MCE::Loop version 1.520
+This document describes MCE::Loop version 1.521
 
 =head1 DESCRIPTION
 
-This module provides a parallel loop implementation through Many-core Engine.
+This module provides a parallel loop implementation through Many-Core Engine.
 MCE::Loop is not MCE::Map but more along the lines of an easy way to spun up a
 MCE instance and have user_func pointing to your code block. If you want
-something similar to how map works, then also see L<MCE::Map>.
+something similar to how map works, then also see L<MCE::Map|MCE::Map>.
 
 =head1 SYNOPSIS when CHUNK_SIZE EQUALS 1
 
@@ -417,14 +427,16 @@ choosing 1 for chunk_size is fine.
 
 The following list 5 options which may be overridden when loading the module.
 
-   use Sereal qw(encode_sereal decode_sereal);
+   use Sereal   qw(encode_sereal decode_sereal);  # Include a serialization
+   use CBOR::XS qw(encode_cbor   decode_cbor  );  #  module of your choice
+   use JSON::XS qw(encode_json   decode_json  );
 
    use MCE::Loop
-         max_workers => 4,                    ## Default 'auto'
-         chunk_size  => 100,                  ## Default 'auto'
-         tmp_dir     => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
-         freeze      => \&encode_sereal,      ## \&Storable::freeze
-         thaw        => \&decode_sereal       ## \&Storable::thaw
+         max_workers => 4,                     ## Default 'auto'
+         chunk_size  => 100,                   ## Default 'auto'
+         tmp_dir     => "/path/to/app/tmp",    ## $MCE::Signal::tmp_dir
+         freeze      => \&encode_sereal,       ## \&Storable::freeze
+         thaw        => \&decode_sereal        ## \&Storable::thaw
    ;
 
 There is a simpler way to enable Sereal with MCE 1.5. The following will
@@ -529,13 +541,13 @@ optional. The format is passed to sprintf (% may be omitted below).
 =item mce_loop { code } iterator
 
 An iterator reference can by specified for input data. Iterators are described
-under "SYNTAX for INPUT_DATA" at L<MCE::Core>.
+under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
 
    mce_loop { $_ } make_iterator(10, 30, 2);
 
 =back
 
-The sequence engine can compute the 'begin' and 'end' items only, for the chunk,
+The sequence engine can compute 'begin' and 'end' items only, for the chunk,
 leaving out the items in between with the bounds_only option (boundaries only).
 This option applies to sequence and has no effect when chunk_size equals 1.
 
@@ -791,7 +803,7 @@ finish after running. This resets the MCE instance.
 
 =head1 INDEX
 
-L<MCE>
+L<MCE|MCE>
 
 =head1 AUTHOR
 
