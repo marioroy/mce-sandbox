@@ -20,7 +20,7 @@ use MCE::Util;
 
 use MCE::Queue;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -537,15 +537,15 @@ MCE::Step - Parallel step model for building creative steps
 
 =head1 VERSION
 
-This document describes MCE::Step version 1.521
+This document describes MCE::Step version 1.522
 
 =head1 DESCRIPTION
 
-MCE::Step is similar to L<MCE::Flow|MCE::Flow> for writing custom apps to
-maximize on all available cores. The main difference comes from the transparent
-inclusion of queues between sub-tasks.
+MCE::Step is similar to L<MCE::Flow|MCE::Flow> for writing custom apps.
+The main difference comes from the transparent use of queues between
+sub-tasks.
 
-It's trivial to parallelize with mce_stream as shown below.
+It is trivial to parallelize with mce_stream shown below.
 
    ## Native map function
    my @a = map { $_ * 4 } map { $_ * 3 } map { $_ * 2 } 1..10000;
@@ -559,22 +559,19 @@ It's trivial to parallelize with mce_stream as shown below.
         sub { $_ * 4 }, sub { $_ * 3 }, sub { $_ * 2 }, 1..10000;
 
 However, let's have MCE::Step compute the same in parallel. Unlike the example
-shown in L<MCE::Flow|MCE::Flow>, the MCE::Queue objects are created and managed
-for you automatically. The use of MCE::Queue is totally transparent.
+in L<MCE::Flow|MCE::Flow>, the use of MCE::Queue is totally transparent.
 
    use MCE::Step;
 
-This calls for preserving output order. This time, will call on a function to
-emit a closure, the iterator itself for the gather option. The closure saves
-one from having to re-initialize $order_id prior to each run.
+This calls for preserving output order.
 
-   sub output_iterator {
+   sub preserve_order {
       my %tmp; my $order_id = 1; my $gather_ref = $_[0];
-
-      @{ $gather_ref } = ();     ## Optional: clear the array
+      @{ $gather_ref } = ();  ## clear the array (optional)
 
       return sub {
-         $tmp{ $_[1] } = $_[0];
+         my ($data_ref, $chunk_id) = @_;
+         $tmp{$chunk_id} = $data_ref;
 
          while (1) {
             last unless exists $tmp{$order_id};
@@ -587,8 +584,8 @@ one from having to re-initialize $order_id prior to each run.
    }
 
 Next are the 3 sub-tasks. Compare these 3 sub-tasks with the same as described
-in L<MCE::Flow|MCE::Flow>. The call to MCE->step is all that's needed for
-passing data into the next sub-task.
+in L<MCE::Flow|MCE::Flow>. The call to MCE->step simplifies the passing of data
+into the next sub-task.
 
    sub task_a {
       my @ans; my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -609,75 +606,76 @@ passing data into the next sub-task.
    }
 
 In summary, MCE::Step builds out a MCE instance behind the scene and starts
-running. Both task_name (shown below) and max_workers can take an anonymous
-array for specifying the values individually for each sub-task.
+running. Both task_name and max_workers (not shown) can take an anonymous
+array for specifying the values uniquely for each sub-task.
 
    my @a;
 
    mce_step {
-      gather => output_iterator(\@a), task_name => [ 'a', 'b', 'c' ]
+      task_name => [ 'a', 'b', 'c' ],
+      gather => preserve_order(\@a)
 
    }, \&task_a, \&task_b, \&task_c, 1..10000;
 
    print "@a\n";
 
-=head1 GATHER AND STEP DEMO
+=head1 STEP DEMO
 
-One may call gather or step any number of times although calling step is not
-allowed from the very last sub-block. There's a lot going on below. For one,
-STDOUT output is serialized back to the main process. We see that chunk_size
-is specified when loading the module and set to 1 for the demonstration.
+In the demonstration below, one may call ->gather or ->step any number of times
+although ->step is not allowed in the last sub-block. Data is gathered to @arr
+which may likely be out-of-order. Gathering data is optional. All sub-blocks
+receive $mce as the first argument.
 
-Data is gathered to @arr which may likely be out-of-order. Gathering data is
-optional and not a requirement to use MCE::Step. Note that all sub-tasks
-receive the $mce instance as the very first argument.
+First, defining 3 sub-tasks.
 
-The tasks below run in parallel, and each with multiple workers as well.
-One may copy this code snippet and add MCE->task_wid or MCE->wid to the
-output. Remember that max_workers can take an anonymous array for specifying
-max_workers individually per each task block, similarly to task_name in the
-previous section.
+   use MCE::Step;
 
-   use MCE::Step chunk_size => 1;
-
-   my @arr = mce_step
-
-   sub {
+   sub task_a {
       my ($mce, $chunk_ref, $chunk_id) = @_;
 
       if ($_ % 2 == 0) {
          MCE->gather($_);
-       # MCE->gather($_ * 4);     ## Ok to gather multiple times
+       # MCE->gather($_ * 4);        ## Ok to gather multiple times
       }
       else {
          MCE->print("a step: $_, $_ * $_\n");
          MCE->step($_, $_ * $_);
-       # MCE->step($_, $_ * 4 );  ## Ok to step multiple times
+       # MCE->step($_, $_ * 4 );     ## Ok to step multiple times
       }
-   },
+   }
 
-   sub {
+   sub task_b {
       my ($mce, $arg1, $arg2) = @_;
 
       MCE->print("b args: $arg1, $arg2\n");
 
-      if ($_ % 3 == 0) {          ## $_ is the same as $arg1
+      if ($_ % 3 == 0) {             ## $_ is the same as $arg1
          MCE->gather($_);
       }
       else {
          MCE->print("b step: $_ * $_\n");
          MCE->step($_ * $_);
       }
-   },
+   }
 
-   sub {
+   sub task_c {
       my ($mce, $arg1) = @_;
 
       MCE->print("c: $_\n");
       MCE->gather($_);
-   },
+   }
 
-   1..10;
+Next, pass MCE options, using chunk_size 1, and run all 3 tasks in parallel.
+Notice how max_workers can take an anonymous array, similarly to task_name.
+
+   my @arr = mce_step {
+      task_name   => [ 'a', 'b', 'c' ],
+      max_workers => [  2,   2,   2  ],
+      chunk_size  => 1
+
+   }, \&task_a, \&task_b, \&task_c, 1..10;
+
+Finally, sort the array and display its contents.
 
    @arr = sort { $a <=> $b } @arr;
 
@@ -711,7 +709,7 @@ code block, the text below also applies to this module, particularly for the
 first block.
 
 All models in MCE default to 'auto' for chunk_size. The arguments for the block
-are the same as writing a user_func block for the core API.
+are the same as writing a user_func block using the Core API.
 
 Beginning with MCE 1.5, the next input item is placed into the input scalar
 variable $_ when chunk_size equals 1. Otherwise, $_ points to $chunk_ref
@@ -757,7 +755,7 @@ inside the first block. Hence, the block is called once per each item.
 
 =head1 SYNOPSIS when CHUNK_SIZE is GREATER THAN 1
 
-Follow this synopsis when chunk_size equals 'auto' or is greater than 1.
+Follow this synopsis when chunk_size equals 'auto' or greater than 1.
 This means having to loop through the chunk from inside the first block.
 
    use MCE::Step;
@@ -772,7 +770,7 @@ This means having to loop through the chunk from inside the first block.
 
    mce_step sub { do_work($_) for (@{ $_ }) }, 1..10000;
 
-   ## Same as above, resembles code using the core API.
+   ## Same as above, resembles code using the Core API.
 
    mce_step sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -791,22 +789,22 @@ choosing 1 for chunk_size is fine.
 
 The following list 6 options which may be overridden when loading the module.
 
-   use Sereal   qw(encode_sereal decode_sereal);  # Include a serialization
-   use CBOR::XS qw(encode_cbor   decode_cbor  );  #  module of your choice
-   use JSON::XS qw(encode_json   decode_json  );
+   use Sereal qw( encode_sereal decode_sereal );
+   use CBOR::XS qw( encode_cbor decode_cbor );
+   use JSON::XS qw( encode_json decode_json );
 
    use MCE::Step
-         max_workers => 8,                     ## Default 'auto'
-         chunk_size  => 500,                   ## Default 'auto'
-         fast        => 1,                     ## Default 0 (fast queue?)
-         tmp_dir     => "/path/to/app/tmp",    ## $MCE::Signal::tmp_dir
-         freeze      => \&encode_sereal,       ## \&Storable::freeze
-         thaw        => \&decode_sereal        ## \&Storable::thaw
+         max_workers => 8,               ## Default 'auto'
+         chunk_size => 500,              ## Default 'auto'
+         fast => 1,                      ## Default 0 (fast queue?)
+         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,      ## \&Storable::freeze
+         thaw => \&decode_sereal         ## \&Storable::thaw
    ;
 
 There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise will default back to using
-Storable for serialization.
+attempt to use Sereal if available, otherwise defaults to Storable for
+serialization.
 
    use MCE::Step Sereal => 1;
 
@@ -814,7 +812,7 @@ Storable for serialization.
       chunk_size => 1
    };
 
-   ## Serialization is through Sereal if available.
+   ## Serialization is by the Sereal module if available.
    my %answer = mce_step sub { MCE->gather( $_, sqrt $_ ) }, 1..10000;
 
 =head1 CUSTOMIZING MCE
@@ -824,7 +822,7 @@ Storable for serialization.
 =item init
 
 The init function accepts a hash of MCE options. Unlike with MCE::Stream,
-both the gather and bounds_only options may be specified when calling init
+both gather and bounds_only options may be specified when calling init
 (not shown below).
 
    use MCE::Step;
@@ -869,26 +867,28 @@ both the gather and bounds_only options may be specified when calling init
 
 Like with MCE::Step::init above, MCE options may be specified using an
 anonymous hash for the first argument. Notice how both max_workers and
-task_name can take an anonymous array for setting values individually
+task_name can take an anonymous array for setting values uniquely
 for each code block.
 
 Unlike MCE::Stream which processes from right-to-left, MCE::Step begins
 with the first code block, thus processing from left-to-right.
 
-The following script takes 9 seconds to complete. Removing both calls to
-MCE->step will cause the script to complete in just 1 second. The reason is
-due to the 2nd and subsequent sub-tasks awaiting data from their queues.
-Workers terminate internally when receiving an undef from the queue. The 9
-seconds is from having only 2 workers assigned for the last sub-task and
-waiting 1 or 2 seconds initially before calling MCE->step.
+The following takes 9 seconds to complete. The 9 seconds is from having
+only 2 workers assigned for the last sub-task and waiting 1 or 2 seconds
+initially before calling MCE->step.
+
+Removing both calls to MCE->step will cause the script to complete in just
+1 second. The reason is due to the 2nd and subsequent sub-tasks awaiting
+data from an internal queue. Workers terminate upon receiving an undef.
 
    use MCE::Step;
 
    my @a = mce_step {
-      max_workers => [ 3, 4, 2, ], task_name => [ 'a', 'b', 'c' ],
+      task_name   => [ 'a', 'b', 'c' ],
+      max_workers => [  3,   4,   2, ],
 
       user_end => sub {
-         my ($task_id, $task_name) = (MCE->task_id, MCE->task_name);
+         my ($mce, $task_id, $task_name) = @_;
          MCE->print("$task_id - $task_name completed\n");
       },
 
@@ -919,13 +919,28 @@ waiting 1 or 2 seconds initially before calling MCE->step.
 =head1 API DOCUMENTATION
 
 Although input data is optional for MCE::Step, the following assumes chunk_size
-equals 1 in order to demonstrate all the possibilities of passing input data.
+equals 1 in order to demonstrate all the possibilities of passing input data
+into the code block.
 
 =over 3
 
+=item mce_step { input_data => iterator }, sub { code }
+
+An iterator reference can by specified for input_data. The only other way
+is to specify input_data via MCE::Step::init. This prevents MCE::Step from
+configuring the iterator reference as another user task which will not work.
+
+Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+
+   MCE::Step::init {
+      input_data => iterator
+   };
+
+   mce_step sub { $_ };
+
 =item mce_step sub { code }, list
 
-Input data can be defined using a list or passing a reference to an array.
+Input data can be defined using a list.
 
    mce_step sub { $_ }, 1..1000;
    mce_step sub { $_ }, [ 1..1000 ];
@@ -954,58 +969,41 @@ optional. The format is passed to sprintf (% may be omitted below).
       begin => $beg, end => $end, step => $step, format => $fmt
    };
 
-=item mce_step { input_data => iterator }, sub { code }
-
-An iterator reference can by specified for input data. Notice the anonymous
-hash as the first argument to mce_step. The only other way is to specify
-input_data via MCE::Step::init. This prevents MCE::Step from configuring
-the iterator reference as another user task which will not work.
-
-Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
-
-   MCE::Step::init {
-      input_data => iterator
-   };
-
-   mce_step sub { $_ };
-
 =back
 
 The sequence engine can compute 'begin' and 'end' items only, for the chunk,
-leaving out the items in between with the bounds_only option (boundaries only).
-This option applies to sequence and has no effect when chunk_size equals 1.
+and not the items in between (hence boundaries only). This option applies
+to sequence only and has no effect when chunk_size equals 1.
 
-The time to run for MCE below is 0.013s. This becomes 0.834s without the
-bounds_only option due to computing all items in between as well, thus
-creating a very large array. Basically, specify bounds_only => 1 when
-boundaries is all you need for looping inside the block; e.g Monte Carlo
-simulations. Time was measured using 1 worker to emphasize the difference.
+The time to run is 0.006s below. This becomes 0.827s without the bounds_only
+option due to computing all items in between, thus creating a very large
+array. Basically, specify bounds_only => 1 when boundaries is all you need
+for looping inside the block; e.g. Monte Carlo simulations.
+
+Time was measured using 1 worker to emphasize the difference.
 
    use MCE::Step;
 
    MCE::Step::init {
-      max_workers => 1,
-    # chunk_size  => 'auto',     ## btw, 'auto' will never drop below 2
-      chunk_size  => 1_250_000,
+      max_workers => 1, chunk_size => 1_250_000,
       bounds_only => 1
    };
 
    ## For sequence, the input scalar $_ points to $chunk_ref
-   ## when chunk_size > 1, otherwise equals $chunk_ref->[0].
+   ## when chunk_size > 1, otherwise $chunk_ref->[0].
    ##
    ## mce_step_s sub {
    ##    my $begin = $_->[0]; my $end = $_->[-1];
    ##
    ##    for ($begin .. $end) {
-   ##       ... have fun with MCE ...
+   ##       ...
    ##    }
    ##
    ## }, 1, 10_000_000;
 
    mce_step_s sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
-
-      ## $chunk_ref contains just 2 items, not 1_250_000
+      ## $chunk_ref contains 2 items, not 1_250_000
 
       my $begin = $chunk_ref->[ 0];
       my $end   = $chunk_ref->[-1];   ## or $chunk_ref->[1]
@@ -1036,8 +1034,7 @@ the gather method is used to have results sent back to the manager process.
    my @a = mce_step sub { MCE->gather($_ * 2) }, 1..100;
    print "@a\n\n";
 
-   ## However, one can store to a hash by gathering 2 items per
-   ## each gather call (key, value).
+   ## Outputs to a hash instead (key, value).
    my %h1 = mce_step sub { MCE->gather($_, $_ * 2) }, 1..100;
    print "@h1{1..100}\n\n";
 
@@ -1106,7 +1103,6 @@ The following uses an anonymous array containing 3 elements when gathering
 data. Serialization is automatic behind the scene.
 
    my %h3 = mce_step sub {
-
       ...
 
       MCE->gather($host, [$output, $error, $status]);
@@ -1119,45 +1115,42 @@ data. Serialization is automatic behind the scene.
       print "Exit status: ", $h3{$host}->[2], "\n\n";
    }
 
-Perhaps you want more control with gather such as appending to an array while
-retaining output order. Although MCE::Map comes to mind, some folks want "full"
-control. And here we go... but this time around in chunking style... :)
+Although MCE::Map comes to mind, one may want additional control when
+gathering data such as retaining output order.
 
-The two options passed to MCE::Step are optional as they default to 'auto'. The
-beauty of chunking data is that IPC occurs once per chunk versus once per item.
-Although IPC is quite fast, chunking becomes beneficial the larger the data
-becomes. Hence, the reason for the demonstration below.
-
-   use MCE::Step chunk_size => 'auto', max_workers => 'auto';
-
-   my (%_tmp, $_gather_ref, $_order_id);
+   use MCE::Step;
 
    sub preserve_order {
-      $_tmp{ (shift) } = \@_;
+      my %tmp; my $order_id = 1; my $gather_ref = $_[0];
 
-      while (1) {
-         last unless exists $_tmp{$_order_id};
-         push @{ $_gather_ref }, @{ $_tmp{$_order_id} };
-         delete $_tmp{$_order_id++};
-      }
+      return sub {
+         $tmp{ (shift) } = \@_;
 
-      return;
+         while (1) {
+            last unless exists $tmp{$order_id};
+            push @{ $gather_ref }, @{ $tmp{$order_id} };
+            delete $tmp{$order_id++};
+         }
+
+         return;
+      };
    }
 
-   ## Workers persist after running. Therefore, not recommended to
-   ## use a closure for gather unless calling MCE::Step::init each
-   ## time inside the loop. Use this demonstration when wanting
-   ## MCE::Step to maintain output order.
+   ## Workers persist for the most part after running. Though, not always
+   ## the case and depends on Perl. Pass a reference to a subroutine if
+   ## workers must persist; e.g. mce_step { ... }, \&foo, 1..100000.
 
-   MCE::Step::init { gather => \&preserve_order };
+   MCE::Step::init {
+      chunk_size => 'auto', max_workers => 'auto'
+   };
 
    for (1..2) {
       my @m2;
 
-      ## Remember to set $_order_id back to 1 prior to running.
-      $_gather_ref = \@m2; $_order_id = 1;
-
-      mce_step sub {
+      mce_step {
+         gather => preserve_order(\@m2)
+      },
+      sub {
          my @a; my ($mce, $chunk_ref, $chunk_id) = @_;
 
          ## Compute the entire chunk data at once.
@@ -1172,20 +1165,23 @@ becomes. Hence, the reason for the demonstration below.
       print scalar @m2, "\n";
    }
 
-All 6 models support 'auto' for chunk_size whereas the core API doesn't. Think
-of the models as the basis for providing JIT for MCE. They create the instance
-and tune max_workers plus chunk_size automatically irregardless of the
-hardware being run on.
+   MCE::Step::finish;
 
-The following does the same thing using the core API.
+All 6 models support 'auto' for chunk_size unlike the Core API. Think of the
+models as the basis for providing JIT for MCE. They create the instance, tune
+max_workers, and tune chunk_size automatically regardless of the hardware.
+
+The following does the same thing using the Core API. Workers persist after
+running.
 
    use MCE;
 
-   ...
+   sub preserve_order {
+      ...
+   }
 
    my $mce = MCE->new(
       max_workers => 'auto', chunk_size => 8000,
-      gather => \&preserve_order,
 
       user_func => sub {
          my @a; my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -1199,9 +1195,15 @@ The following does the same thing using the core API.
       }
    );
 
-   $mce->process([1..100000]);
+   for (1..2) {
+      my @m2;
 
-   ...
+      $mce->process({ gather => preserve_order(\@m2) }, [1..100000]);
+
+      print scalar @m2, "\n";
+   }
+
+   $mce->shutdown;
 
 =head1 MANUAL SHUTDOWN
 
@@ -1209,9 +1211,9 @@ The following does the same thing using the core API.
 
 =item finish
 
-MCE workers remain persistent as much as possible after running. Shutdown
-occurs when the script exits. One can manually shutdown MCE by simply calling
-finish after running. This resets the MCE instance.
+Workers remain persistent as much as possible after running. Shutdown occurs
+automatically when the script terminates. Call finish when workers are no
+longer needed.
 
    use MCE::Step;
 

@@ -18,7 +18,7 @@ use Scalar::Util qw( looks_like_number );
 use MCE;
 use MCE::Util;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -410,7 +410,7 @@ MCE::Map - Parallel map model similar to the native map function
 
 =head1 VERSION
 
-This document describes MCE::Map version 1.521
+This document describes MCE::Map version 1.522
 
 =head1 SYNOPSIS
 
@@ -436,38 +436,38 @@ This document describes MCE::Map version 1.521
 
 =head1 DESCRIPTION
 
-This module provides a parallel map implementation via Many-Core Engine. MCE
-incurs a small overhead due to passing of data. Therefore, a fast code block
-will likely run faster using the native map function in Perl. The overhead
-quickly diminishes as the complexity of the code block increases.
+This module provides a parallel map implementation via Many-Core Engine.
+MCE incurs a small overhead due to passing of data. A fast code block will
+run faster natively. However, the overhead will likely diminish as the
+complexity increases for the code.
 
-   my @m1 =     map { $_ * $_ } 1..1000000;               ## 0.251 secs
-   my @m2 = mce_map { $_ * $_ } 1..1000000;               ## 0.525 secs
+   my @m1 =     map { $_ * $_ } 1..1000000;               ## 0.127 secs
+   my @m2 = mce_map { $_ * $_ } 1..1000000;               ## 0.304 secs
 
 Chunking, enabled by default, greatly reduces the overhead behind the scene.
 The time for mce_map below also includes the time for data exchanges between
 the manager and worker processes. More parallelization will be seen when the
-code block requires additional CPU time code-wise.
+code incurs additional CPU time.
 
    sub calc {
       sqrt $_ * sqrt $_ / 1.3 * 1.5 / 3.2 * 1.07
    }
 
-   my @m1 =     map { calc } 1..1000000;                  ## 0.756 secs
-   my @m2 = mce_map { calc } 1..1000000;                  ## 0.623 secs
+   my @m1 =     map { calc } 1..1000000;                  ## 0.367 secs
+   my @m2 = mce_map { calc } 1..1000000;                  ## 0.365 secs
 
-The mce_map_s function will provide better times, useful when the input data
-is simply a range of numbers. Workers generate sequences mathematically among
-themselves without any interaction from the manager process. Two arguments are
-required for mce_map_s (begin, end). Step defaults to 1 if begin is smaller
-than end, otherwise -1.
+Even faster is mce_map_s; useful when input data is a range of numbers.
+Workers generate sequences mathematically among themselves without any
+interaction from the manager process. Two arguments are required for
+mce_map_s (begin, end). Step defaults to 1 if begin is smaller than end,
+otherwise -1.
 
-   my @m3 = mce_map_s { calc } 1, 1000000;                ## 0.517 secs
+   my @m3 = mce_map_s { calc } 1, 1000000;                ## 0.270 secs
 
-Although this document is about MCE::Map, the L<MCE::Stream|MCE::Stream> module
-can write results immediately without waiting for all chunks to complete. This
-is made possible by passing the reference of the array (in this case @m4 and
-@m5).
+Although this document is about MCE::Map, the L<MCE::Stream|MCE::Stream>
+module can write results immediately without waiting for all chunks to
+complete. This is made possible by passing the reference to an array
+(in this case @m4 and @m5).
 
    use MCE::Stream;
 
@@ -477,12 +477,12 @@ is made possible by passing the reference of the array (in this case @m4 and
 
    my @m4; mce_stream \@m4, sub { calc }, 1..1000000;
 
-      ## Completes in 0.436 secs. That is amazing considering the
-      ## overhead for passing data between the manager and worker.
+      ## Completes in 0.272 secs. This is amazing considering the
+      ## overhead for passing data between the manager and workers.
 
    my @m5; mce_stream_s \@m5, sub { calc }, 1, 1000000;
 
-      ## Completed in 0.301 secs. Like with mce_map_s, specifying a
+      ## Completed in 0.176 secs. Like with mce_map_s, specifying a
       ## sequence specification turns out to be faster due to lesser
       ## overhead for the manager process.
 
@@ -490,25 +490,25 @@ is made possible by passing the reference of the array (in this case @m4 and
 
 The following list 5 options which may be overridden when loading the module.
 
-   use Sereal   qw(encode_sereal decode_sereal);  # Include a serialization
-   use CBOR::XS qw(encode_cbor   decode_cbor  );  #  module of your choice
-   use JSON::XS qw(encode_json   decode_json  );
+   use Sereal qw( encode_sereal decode_sereal );
+   use CBOR::XS qw( encode_cbor decode_cbor );
+   use JSON::XS qw( encode_json decode_json );
 
    use MCE::Map
-         max_workers => 4,                     ## Default 'auto'
-         chunk_size  => 100,                   ## Default 'auto'
-         tmp_dir     => "/path/to/app/tmp",    ## $MCE::Signal::tmp_dir
-         freeze      => \&encode_sereal,       ## \&Storable::freeze
-         thaw        => \&decode_sereal        ## \&Storable::thaw
+         max_workers => 4,               ## Default 'auto'
+         chunk_size => 100,              ## Default 'auto'
+         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,      ## \&Storable::freeze
+         thaw => \&decode_sereal         ## \&Storable::thaw
    ;
 
 There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise will default back to using
-Storable for serialization.
+attempt to use Sereal if available, otherwise defaults to Storable for
+serialization.
 
    use MCE::Map Sereal => 1;
 
-   ## Serialization is through Sereal if available.
+   ## Serialization is by the Sereal module if available.
    my @m2 = mce_map { $_ * $_ } 1..10000;
 
 =head1 CUSTOMIZING MCE
@@ -518,7 +518,7 @@ Storable for serialization.
 =item init
 
 The init function accepts a hash of MCE options. The gather option, if
-specified, will be set to undef due to being used internally by the module.
+specified, is ignored due to being used internally by the module.
 
    use MCE::Map;
 
@@ -564,9 +564,16 @@ specified, will be set to undef due to being used internally by the module.
 
 =over 3
 
+=item mce_map { code } iterator
+
+An iterator reference can by specified for input_data. Iterators are described
+under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+
+   my @a = mce_map { $_ * 2 } make_iterator(10, 30, 2);
+
 =item mce_map { code } list
 
-Input data can be defined using a list or passing a reference to an array.
+Input data can be defined using a list.
 
    my @a = mce_map { $_ * 2 } 1..1000;
    my @b = mce_map { $_ * 2 } [ 1..1000 ];
@@ -595,13 +602,6 @@ optional. The format is passed to sprintf (% may be omitted below).
       begin => $beg, end => $end, step => $step, format => $fmt
    };
 
-=item mce_map { code } iterator
-
-An iterator reference can by specified for input data. Iterators are described
-under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
-
-   my @a = mce_map { $_ * 2 } make_iterator(10, 30, 2);
-
 =back
 
 =head1 MANUAL SHUTDOWN
@@ -610,9 +610,9 @@ under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
 
 =item finish
 
-MCE workers remain persistent as much as possible after running. Shutdown
-occurs when the script exits. One can manually shutdown MCE by simply calling
-finish after running. This resets the MCE instance.
+Workers remain persistent as much as possible after running. Shutdown occurs
+automatically when the script terminates. Call finish when workers are no
+longer needed.
 
    use MCE::Map;
 

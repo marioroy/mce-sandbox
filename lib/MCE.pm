@@ -34,7 +34,7 @@ use Time::HiRes qw( sleep time );
 use MCE::Signal;
 use bytes;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 our (%_valid_fields_new, %_params_allowed_args, %_valid_fields_task);
 our ($_is_cygwin, $_is_mswin32, $_is_winenv);
@@ -111,7 +111,6 @@ BEGIN {
 
    ## PDL + MCE (spawning as threads) is not stable. Thanks to David Mertens
    ## for reporting on how he fixed it for his PDL::Parallel::threads module.
-
    sub PDL::CLONE_SKIP { return 1; }
 
    return;
@@ -178,7 +177,6 @@ sub import {
    ## Please include your threading library of choice prior to including
    ## the MCE library. This is only a requirement if wanting to use threads
    ## versus forking.
-
    unless (defined $_has_threads) {
       if (defined $threads::VERSION) {
          unless (defined $threads::shared::VERSION) {
@@ -272,7 +270,6 @@ $MCE::Signal::mce_spawned_ref  = \%_mce_spawned;
 
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
-
 no warnings 'threads'; no warnings 'uninitialized';
 
 sub DESTROY { }
@@ -1255,12 +1252,12 @@ sub shutdown {
 
    @_ = ();
 
-   _validate_runstate($self, 'MCE::shutdown');
-
    ## Return if workers have not been spawned or have already been shutdown.
+   return unless (defined $MCE::Signal::tmp_dir);
    return unless ($self->{_spawned});
 
    ## Wait for workers to complete processing before shutting down.
+   _validate_runstate($self, 'MCE::shutdown');
    $self->run(0) if ($self->{_send_cnt});
 
    local $SIG{__DIE__}  = \&_die;
@@ -1674,10 +1671,10 @@ sub gather {
       $_dest = (exists $_sendto_lkup{$_to}) ? $_sendto_lkup{$_to} : undef;
 
       if (!defined $_dest) {
-         if (defined (my $_fd = fileno($_to))) {
+         if (ref $_to && defined (my $_fd = fileno($_to))) {
             my $_data = (scalar @_) ? join('', @_) : $_;
             _do_send_glob($self, $_to, $_fd, \$_data);
-            return;
+            @_ = (); return;
          }
          if (defined $_to && $_to =~ /$_v2_regx/o) {
             $_dest  = (exists $_sendto_lkup{$1}) ? $_sendto_lkup{$1} : undef;
@@ -1720,9 +1717,8 @@ sub print {
 
    my $x = shift; my $self = ref($x) ? $x : $MCE;
 
-   if (defined (my $_fd = fileno($_[0]))) {
-      my $_glob = shift;
-      my $_data = (scalar @_) ? join('', @_) : $_;
+   if (ref $_[0] && defined (my $_fd = fileno($_[0]))) {
+      my ($_glob, $_data) = (shift, (scalar @_) ? join('', @_) : $_);
 
       _do_send_glob($self, $_glob, $_fd, \$_data);
    }
@@ -1738,17 +1734,15 @@ sub print {
       }
    }
 
-   @_ = ();
-
-   return;
+   @_ = (); return;
 }
 
 sub printf {
 
    my $x = shift; my $self = ref($x) ? $x : $MCE;
 
-   if (defined (my $_fd = fileno($_[0]))) {
-      my $_glob = shift; my $_fmt = shift || '%s';
+   if (ref $_[0] && defined (my $_fd = fileno($_[0]))) {
+      my ($_glob, $_fmt) = (shift, shift || '%s');
       my $_data = (scalar @_) ? sprintf($_fmt, @_) : sprintf($_fmt, $_);
 
       _do_send_glob($self, $_glob, $_fd, \$_data);
@@ -1766,16 +1760,14 @@ sub printf {
       }
    }
 
-   @_ = ();
-
-   return;
+   @_ = (); return;
 }
 
 sub say {
 
    my $x = shift; my $self = ref($x) ? $x : $MCE;
 
-   if (defined (my $_fd = fileno($_[0]))) {
+   if (ref $_[0] && defined (my $_fd = fileno($_[0]))) {
       my $_glob = shift;
       my $_data = (scalar @_) ? join("\n", @_) . "\n" : $_ . "\n";
 
@@ -1793,9 +1785,7 @@ sub say {
       }
    }
 
-   @_ = ();
-
-   return;
+   @_ = (); return;
 }
 
 ###############################################################################

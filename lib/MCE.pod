@@ -5,7 +5,7 @@ MCE - Many-Core Engine for Perl providing parallel processing capabilities
 
 =head1 VERSION
 
-This document describes MCE version 1.521
+This document describes MCE version 1.522
 
 =head1 DESCRIPTION
 
@@ -16,8 +16,7 @@ a bank queuing model. Imagine the line being the data and bank-tellers the
 parallel workers. MCE enhances that model by adding the ability to chunk
 the next n elements from the input stream to the next available worker.
 
-Chunking and input data are optional in MCE. One may use MCE to run many
-workers in parallel without specifying input data.
+Input data is optional in MCE. Thus, input data is not required to run MCE.
 
 =head1 CORE MODULES
 
@@ -27,15 +26,15 @@ Three modules make up the core engine for MCE.
 
 =item L<MCE::Core|MCE::Core>
 
-Provides the core API for Many-Core Engine.
+Provides the Core API for Many-Core Engine.
 
 =item L<MCE::Signal|MCE::Signal>
 
-Temporary directory creation/cleanup & signal handling.
+Temporary directory creation/cleanup and signal handling.
 
 =item L<MCE::Util|MCE::Util>
 
-Public and private utility functions.
+Utility functions for Many-Core Engine.
 
 =back
 
@@ -54,16 +53,16 @@ threads.
 
 =item L<MCE::Subs|MCE::Subs>
 
-Exports functions mapped directly to MCE's methods, e.g. mce_wid. The module
-allows 3 options; :manager, :worker, :getter.
+Exports functions mapped directly to MCE methods; e.g. mce_wid. The module
+allows 3 options; :manager, :worker, and :getter.
 
 =back
 
 =head1 MCE MODELS
 
-MCE 1.5 includes 6 models. They configure the MCE instance and tune chunk_size
-and max_workers for you. Spawning and shutdown is automatic. In essence, the
-models take Many-Core Engine to a new level for ease of use.
+MCE 1.5 includes 6 models. The models take Many-Core Engine to a new level
+for ease of use. Two options (chunk_size and max_workers) are configured
+automatically as well as spawning and shutdown.
 
 =over 3
 
@@ -76,7 +75,7 @@ Provides a parallel loop utilizing MCE for building creative loops.
 A parallel flow model for building creative applications. This makes use of
 user_tasks in MCE. The author has full control when utilizing this model.
 MCE::Flow is similar to MCE::Loop, but allows for multiple code blocks to
-run simultaneously with a slight change to syntax.
+run in parallel with a slight change to syntax.
 
 =item L<MCE::Grep|MCE::Grep>
 
@@ -97,8 +96,8 @@ into the next transparently.
 
 Provides an efficient parallel implementation for chaining multiple maps
 and greps together through user_tasks and MCE::Queue. Like with MCE::Flow,
-MCE::Stream can run multiple code blocks simultaneously with a slight
-change to syntax from MCE::Map and MCE::Grep.
+MCE::Stream can run multiple code blocks in parallel with a slight change
+to syntax from MCE::Map and MCE::Grep.
 
 =back
 
@@ -116,8 +115,7 @@ Describes various demonstations for MCE including a Monte Carlo simulation.
 
 =head1 REQUIREMENTS
 
-Perl 5.8.0 or later. PDL::IO::Storable is required in scripts running PDL
-and using MCE for parallelization.
+Perl 5.8.0 or later. PDL::IO::Storable is required in scripts running PDL.
 
 =head1 SOURCE
 

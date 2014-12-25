@@ -14,7 +14,7 @@ use warnings;
 
 use MCE;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -195,7 +195,7 @@ MCE::Subs - Exports functions mapped directly to MCE methods
 
 =head1 VERSION
 
-This document describes MCE::Subs version 1.521
+This document describes MCE::Subs version 1.522
 
 =head1 SYNOPSIS
 
@@ -214,8 +214,6 @@ This module exports functions mapped to MCE methods. All exported functions
 are prototyped, therefore allowing one to call them without using parentheses.
 
    use MCE::Subs qw( :worker );
-
-   ## barrier synchronization among workers
 
    sub user_func {
       my $wid = MCE->wid;
@@ -244,22 +242,24 @@ to using MCE::Map, which takes care of creating a MCE instance and running.
    use MCE::Map;
    use MCE::Subs qw( :worker );
 
-   ## The following will serialize output to STDOUT as well as gather
-   ## to @a. mce_say displays $_ when called without arguments.
+   ## The following serializes output to STDOUT and gathers $_ to @a.
+   ## mce_say displays $_ when called without arguments.
 
    my @a = mce_map { mce_say; $_ } 1 .. 100;
 
    print scalar @a, "\n";
 
-Unlike the native Perl functions, print, printf, and say methods require the
-comma after the file handle.
+Unlike the native Perl functions, printf, print, and say methods require the
+comma after the glob reference or file handle.
 
-   MCE->print("STDERR", $error_msg, "\n");  ## Requires quotes around
-   MCE->say("STDERR", $error_msg);          ## the bare-word FH.
+   MCE->printf(\*STDERR, "%s\n", $error_msg);
+   MCE->print(\*STDERR, $error_msg, "\n");
+   MCE->say(\*STDERR, $error_msg);
    MCE->say($fh, $error_msg);
 
-   mce_print STDERR, $error_msg, "\n";      ## Quotes are optional
-   mce_say STDERR, $error_msg;              ## around the bare-word FH.
+   mce_printf \*STDERR, "%s\n", $error_msg;
+   mce_print \*STDERR, $error_msg, "\n";
+   mce_say \*STDERR, $error_msg;
    mce_say $fh, $error_msg;
 
 =head1 FUNCTIONS for the MANAGER PROCESS via ( :manager )

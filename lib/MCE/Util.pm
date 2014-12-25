@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Util - Public and private utility functions for Many-Core Engine.
+## MCE::Util - Utility functions for Many-Core Engine.
 ##
 ###############################################################################
 
@@ -14,7 +14,7 @@ use warnings;
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 our @EXPORT_OK = qw( get_ncpu );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
@@ -37,7 +37,7 @@ sub get_ncpu {
    return $g_ncpu if (defined $g_ncpu);
 
    local $ENV{PATH} = "/usr/sbin:/sbin:/usr/bin:/bin:$ENV{PATH}";
-   $ENV{PATH} =~ /(.*)/; $ENV{PATH} = $1;   ## Remove taintedness
+   $ENV{PATH} =~ /(.*)/; $ENV{PATH} = $1;   ## Remove tainted'ness
 
    my $ncpu = 1;
 
@@ -239,11 +239,11 @@ __END__
 
 =head1 NAME
 
-MCE::Util - Public and private utility functions for Many-Core Engine
+MCE::Util - Utility functions for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.521
+This document describes MCE::Util version 1.522
 
 =head1 SYNOPSIS
 
@@ -268,7 +268,7 @@ This is important for apps which are IO-bound.
 
  use MCE;
 
- ## 'Auto' is the total # of logical cores (lcores) (8 maximum, MCE 1.521)
+ ## 'Auto' is the total # of logical cores (lcores) (8 maximum, MCE 1.521).
  ## The computed value will not exceed the # of logical cores on the box.
 
  my $mce = MCE->new(

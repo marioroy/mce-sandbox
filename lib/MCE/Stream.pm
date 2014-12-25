@@ -19,7 +19,7 @@ use MCE;
 use MCE::Util;
 use MCE::Queue;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -626,7 +626,7 @@ MCE::Stream - Parallel stream model for chaining multiple maps and greps
 
 =head1 VERSION
 
-This document describes MCE::Stream version 1.521
+This document describes MCE::Stream version 1.522
 
 =head1 SYNOPSIS
 
@@ -667,13 +667,12 @@ This document describes MCE::Stream version 1.521
 =head1 DESCRIPTION
 
 This module allows one to stream multiple map and/or grep operations in
-parallel. Code blocks run simultaneously from right-to-left. Chunk data are
-sent immediately to the next code block during processing. The results are
-appended immediately as well when passing the reference to the array.
+parallel. Code blocks run simultaneously from right-to-left. The results
+are appended immediately when providing a reference to an array.
 
    ## Appends are serialized, even out-of-order ok, but immediately.
    ## Out-of-order chunks are held temporarily until ordered chunks
-   ## arrive before appending.
+   ## arrive.
 
    mce_stream \@a, sub { $_ }, sub { $_ }, sub { $_ }, 1..10000;
 
@@ -690,29 +689,28 @@ appended immediately as well when passing the reference to the array.
    ##   ...
    ##
 
-MCE incurs a small overhead due to passing of data. Therefore, a fast code
-block will likely run faster when chaining multiple map functions natively in
-Perl. However, the overhead quickly diminishes as the complexity of the code
-increases.
+MCE incurs a small overhead due to passing of data. A fast code block will
+run faster natively when chaining multiple map functions. However, the
+overhead will likely diminish as the complexity increases for the code.
 
-   ## 0.542 secs -- baseline using the native map function
+   ## 0.334 secs -- baseline using the native map function
    my @m1 = map { $_ * 4 } map { $_ * 3 } map { $_ * 2 } 1..1000000;
 
-   ## 0.765 secs -- this is quite amazing considering data passing
+   ## 0.427 secs -- this is quite amazing considering data passing
    my @m2 = mce_stream
          sub { $_ * 4 }, sub { $_ * 3 }, sub { $_ * 2 }, 1..1000000;
 
-   ## 0.592 secs -- appends to @m3 are immediate
+   ## 0.355 secs -- appends to @m3 immediately, not after running
    my @m3; mce_stream \@m3,
          sub { $_ * 4 }, sub { $_ * 3 }, sub { $_ * 2 }, 1..1000000;
 
-The mce_stream_s function will provide better times, useful when the input data
-is simply a range of numbers. Workers generate sequences mathematically among
-themselves without any interaction from the manager process. Two arguments are
-required for mce_stream_s (begin, end). Step defaults to 1 if begin is smaller
-than end, otherwise -1.
+Even faster is mce_stream_s; useful when input data is a range of numbers.
+Workers generate sequences mathematically among themselves without any
+interaction from the manager process. Two arguments are required for
+mce_stream_s (begin, end). Step defaults to 1 if begin is smaller than end,
+otherwise -1.
 
-   ## 0.447 secs -- numbers are generated mathematically via sequence
+   ## 0.278 secs -- numbers are generated mathematically via sequence
    my @m4; mce_stream_s \@m4,
          sub { $_ * 4 }, sub { $_ * 3 }, sub { $_ * 2 }, 1, 1000000;
 
@@ -720,27 +718,27 @@ than end, otherwise -1.
 
 The following list 7 options which may be overridden when loading the module.
 
-   use Sereal   qw(encode_sereal decode_sereal);  # Include a serialization
-   use CBOR::XS qw(encode_cbor   decode_cbor  );  #  module of your choice
-   use JSON::XS qw(encode_json   decode_json  );
+   use Sereal qw( encode_sereal decode_sereal );
+   use CBOR::XS qw( encode_cbor decode_cbor );
+   use JSON::XS qw( encode_json decode_json );
 
    use MCE::Stream
-         default_mode => 'grep',               ## Default 'map'
-         max_workers  => 8,                    ## Default 'auto'
-         chunk_size   => 500,                  ## Default 'auto'
-         fast         => 1,                    ## Default 0 (fast queue?)
-         tmp_dir      => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
-         freeze       => \&encode_sereal,      ## \&Storable::freeze
-         thaw         => \&decode_sereal       ## \&Storable::thaw
+         default_mode => 'grep',         ## Default 'map'
+         max_workers => 8,               ## Default 'auto'
+         chunk_size => 500,              ## Default 'auto'
+         fast => 1,                      ## Default 0 (fast queue?)
+         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,      ## \&Storable::freeze
+         thaw => \&decode_sereal         ## \&Storable::thaw
    ;
 
 There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise will default back to using
-Storable for serialization.
+attempt to use Sereal if available, otherwise defaults to Storable for
+serialization.
 
    use MCE::Stream Sereal => 1;
 
-   ## Serialization is through Sereal if available.
+   ## Serialization is by the Sereal module if available.
    my @m2 = mce_stream sub { $_ * $_ }, 1..10000;
 
 =head1 CUSTOMIZING MCE
@@ -750,7 +748,7 @@ Storable for serialization.
 =item init
 
 The init function accepts a hash of MCE options. The gather and bounds_only
-options, if specified, will be ignored due to being used internally by the
+options, if specified, are ignored due to being used internally by the
 module (not shown below).
 
    use MCE::Stream;
@@ -795,17 +793,20 @@ module (not shown below).
 
 Like with MCE::Stream::init above, MCE options may be specified using an
 anonymous hash for the first argument. Notice how both max_workers and
-task_name can take an anonymous array for setting values individually
-for each code block. Remember that MCE::Stream processes from
-right-to-left when setting the individual values.
+task_name can take an anonymous array for setting values uniquely
+for each code block.
+
+Remember that MCE::Stream processes from right-to-left when setting the
+individual values.
 
    use MCE::Stream;
 
    my @a = mce_stream {
-      max_workers => [ 2, 4, 3, ], task_name => [ 'c', 'b', 'a' ],
+      task_name   => [ 'c', 'b', 'a' ],
+      max_workers => [  2,   4,   3, ],
 
       user_end => sub {
-         my ($task_id, $task_name) = (MCE->task_id, MCE->task_name);
+         my ($mce, $task_id, $task_name) = @_;
          print "$task_id - $task_name completed\n";
       },
 
@@ -834,7 +835,7 @@ right-to-left when setting the individual values.
    2 - c ended
 
 Note that the anonymous hash, for specifying options, also comes first when
-passing the array reference.
+passing an array reference.
 
    my @a; mce_stream {
       ...
@@ -842,8 +843,9 @@ passing the array reference.
 
 =head1 API DOCUMENTATION
 
-Scripts using MCE::Stream can be written using the long or short form. The long
-form becomes relavant when mixing modes. Processing occurs from right-to-left.
+Scripts using MCE::Stream can be written using the long or short form.
+The long form becomes relevant when mixing modes. Again, processing
+occurs from right-to-left.
 
    my @m3 = mce_stream
       { mode => 'map',  code => sub { $_ * $_ } },
@@ -866,9 +868,24 @@ possibilities of passing input data into the code block.
 
 =over 3
 
+=item mce_stream { input_data => iterator }, sub { code }
+
+An iterator reference can by specified for input_data. The only other way
+is to specify input_data via MCE::Stream::init. This prevents MCE::Stream
+from configuring the iterator reference as another user task which will
+not work.
+
+Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+
+   MCE::Stream::init {
+      input_data => iterator
+   };
+
+   my @a = mce_stream sub { $_ * 3 }, sub { $_ * 2 };
+
 =item mce_stream sub { code }, list
 
-Input data can be defined using a list or passing a reference to an array.
+Input data can be defined using a list.
 
    my @a = mce_stream sub { $_ * 2 }, 1..1000;
    my @b = mce_stream sub { $_ * 2 }, [ 1..1000 ];
@@ -897,21 +914,6 @@ optional. The format is passed to sprintf (% may be omitted below).
       begin => $beg, end => $end, step => $step, format => $fmt
    };
 
-=item mce_stream { input_data => iterator }, sub { code }
-
-An iterator reference can by specified for input data. Notice the anonymous
-hash as the first argument to mce_stream. The only other way is to specify
-input_data via MCE::Stream::init. This prevents MCE::Stream from configuring
-the iterator reference as another user task which will not work.
-
-Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
-
-   MCE::Stream::init {
-      input_data => iterator
-   };
-
-   my @a = mce_stream sub { $_ * 3 }, sub { $_ * 2 };
-
 =back
 
 =head1 MANUAL SHUTDOWN
@@ -920,9 +922,9 @@ Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
 
 =item finish
 
-MCE workers remain persistent as much as possible after running. Shutdown
-occurs when the script exits. One can manually shutdown MCE by simply calling
-finish after running. This resets the MCE instance.
+Workers remain persistent as much as possible after running. Shutdown occurs
+automatically when the script terminates. Call finish when workers are no
+longer needed.
 
    use MCE::Stream;
 

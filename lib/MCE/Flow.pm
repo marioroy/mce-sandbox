@@ -18,7 +18,7 @@ use Scalar::Util qw( looks_like_number );
 use MCE;
 use MCE::Util;
 
-our $VERSION = '1.521';
+our $VERSION = '1.522';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -447,14 +447,14 @@ MCE::Flow - Parallel flow model for building creative applications
 
 =head1 VERSION
 
-This document describes MCE::Flow version 1.521
+This document describes MCE::Flow version 1.522
 
 =head1 DESCRIPTION
 
 MCE::Flow is great for writing custom apps to maximize on all available cores.
 This module was created to help one harness user_tasks within MCE.
 
-It's trivial to parallelize with mce_stream as shown below.
+It is trivial to parallelize with mce_stream shown below.
 
    ## Native map function
    my @a = map { $_ * 4 } map { $_ * 3 } map { $_ * 2 } 1..10000;
@@ -468,28 +468,29 @@ It's trivial to parallelize with mce_stream as shown below.
         sub { $_ * 4 }, sub { $_ * 3 }, sub { $_ * 2 }, 1..10000;
 
 However, let's have MCE::Flow compute the same in parallel. MCE::Queue
-will be used for data flow among the sub-tasks. Also, take a look at
-L<MCE::Step|MCE::Step> for transparent use of MCE::Queue.
+will be used for data flow among the sub-tasks.
 
    use MCE::Flow;
    use MCE::Queue;
 
-This calls for preserving output order. Remember to set $_order_id to 1 before
-running.
+This calls for preserving output order.
 
-   my ($_gather_ref, $_order_id, %_tmp);
+   sub preserve_order {
+      my %tmp; my $order_id = 1; my $gather_ref = $_[0];
+      @{ $gather_ref } = ();  ## clear the array (optional)
 
-   sub _preserve_order {
+      return sub {
+         my ($data_ref, $chunk_id) = @_;
+         $tmp{$chunk_id} = $data_ref;
 
-      $_tmp{$_[1]} = $_[0];
+         while (1) {
+            last unless exists $tmp{$order_id};
+            push @{ $gather_ref }, @{ $tmp{$order_id} };
+            delete $tmp{$order_id++};
+         }
 
-      while (1) {
-         last unless exists $_tmp{$_order_id};
-         push @{ $_gather_ref }, @{ $_tmp{$_order_id} };
-         delete $_tmp{$_order_id++};
-      }
-
-      return;
+         return;
+      };
    }
 
 Two queues are needed for data flow between the 3 sub-tasks. Notice task_end
@@ -517,27 +518,29 @@ and how the value from $task_name is used for determining which task has ended.
 
 Next are the 3 sub-tasks. The first one reads input and begins the flow.
 The 2nd task dequeues, performs the calculation, and enqueues into the next.
-Finally, the last task calls the gather method. Gather can be called as often
-as needed.
+Finally, the last task calls the gather method.
 
-Although serialization is done for you automatically, it's done here to save
+Although serialization is done for you automatically, it is done here to save
 from double serialization. This is the fastest approach for passing data
-between sub-tasks, when wanting to run with the least overhead.
+between sub-tasks. Thus, the least overhead.
 
    sub task_a {
       my @ans; my ($mce, $chunk_ref, $chunk_id) = @_;
 
       push @ans, map { $_ * 2 } @{ $chunk_ref };
       $b->enqueue(MCE->freeze([ \@ans, $chunk_id ]));
+
+      return;
    }
 
    sub task_b {
       my ($mce) = @_;
 
       while (1) {
-         my $chunk = $b->dequeue; last unless defined $chunk;
-         my @ans; $chunk = MCE->thaw($chunk);
+         my @ans; my $chunk = $b->dequeue;
+         last unless defined $chunk;
 
+         $chunk = MCE->thaw($chunk);
          push @ans, map { $_ * 3 } @{ $chunk->[0] };
          $c->enqueue(MCE->freeze([ \@ans, $chunk->[1] ]));
       }
@@ -549,9 +552,10 @@ between sub-tasks, when wanting to run with the least overhead.
       my ($mce) = @_;
 
       while (1) {
-         my $chunk = $c->dequeue; last unless defined $chunk;
-         my @ans; $chunk = MCE->thaw($chunk);
+         my @ans; my $chunk = $c->dequeue;
+         last unless defined $chunk;
 
+         $chunk = MCE->thaw($chunk);
          push @ans, map { $_ * 4 } @{ $chunk->[0] };
          MCE->gather(\@ans, $chunk->[1]);
       }
@@ -560,14 +564,14 @@ between sub-tasks, when wanting to run with the least overhead.
    }
 
 In summary, MCE::Flow builds out a MCE instance behind the scene and starts
-running. Both task_name (shown below) and max_workers can take an anonymous
-array for specifying the values individually for each sub-task.
+running. Both task_name and max_workers (not shown) can take an anonymous
+array for specifying the values uniquely for each sub-task.
 
-   my @a; $_gather_ref = \@a; $_order_id = 1;
+   my @a;
 
    mce_flow {
-      gather => \&_preserve_order, task_name => [ 'a', 'b', 'c' ],
-      task_end => \&task_end
+      task_name => [ 'a', 'b', 'c' ], task_end => \&task_end,
+      gather => preserve_order(\@a)
 
    }, \&task_a, \&task_b, \&task_c, 1..10000;
 
@@ -577,24 +581,72 @@ If speed is not a concern and wanting to rid of all the MCE->freeze and
 MCE->thaw statements, simply enqueue and dequeue 2 items at a time.
 Or better yet, see L<MCE::Step|MCE::Step> introduced in MCE 1.506.
 
-   $b->enqueue(\@ans, $chunk_id)
+First, task_end must be updated. The number of undef(s) must match the number
+of workers times the dequeue count. Otherwise, the script will stall.
 
-   ...
-
-   my ($chunk_ref, $chunk_id) = $b->dequeue(2);
-   last unless defined $chunk_ref;
-
-   ...
-
-The task_end must be updated as well due to workers dequeuing 2 items at a
-time. Therefore, we must double the number of undefs into the queue.
-
-   if ($task_name eq 'a') {
-      $b->enqueue((undef) x ($n_workers * 2));
+   sub task_end {
+      ...
+         if ($task_name eq 'a') {
+          # $b->enqueue((undef) x $n_workers);
+            $b->enqueue((undef) x ($n_workers * 2));
+         }
+         elsif ($task_name eq 'b') {
+          # $c->enqueue((undef) x $n_workers);
+            $c->enqueue((undef) x ($n_workers * 2));
+         }
+      ...
    }
-   elsif ($task_name eq 'b') {
-      $c->enqueue((undef) x ($n_workers * 2));
+
+Next, the 3 sub-tasks enqueuing and dequeuing 2 elements at a time.
+
+   sub task_a {
+      my @ans; my ($mce, $chunk_ref, $chunk_id) = @_;
+
+      push @ans, map { $_ * 2 } @{ $chunk_ref };
+      $b->enqueue(\@ans, $chunk_id);
+
+      return;
    }
+
+   sub task_b {
+      my ($mce) = @_;
+
+      while (1) {
+         my @ans; my ($chunk_ref, $chunk_id) = $b->dequeue(2);
+         last unless defined $chunk_ref;
+
+         push @ans, map { $_ * 3 } @{ $chunk_ref };
+         $c->enqueue(\@ans, $chunk_id);
+      }
+
+      return;
+   }
+
+   sub task_c {
+      my ($mce) = @_;
+
+      while (1) {
+         my @ans; my ($chunk_ref, $chunk_id) = $c->dequeue(2);
+         last unless defined $chunk_ref;
+
+         push @ans, map { $_ * 4 } @{ $chunk_ref };
+         MCE->gather(\@ans, $chunk_id);
+      }
+
+      return;
+   }
+
+Finally, run as usual.
+
+   my @a;
+
+   mce_flow {
+      task_name => [ 'a', 'b', 'c' ], task_end => \&task_end,
+      gather => preserve_order(\@a)
+
+   }, \&task_a, \&task_b, \&task_c, 1..10000;
+
+   print "@a\n";
 
 =head1 SYNOPSIS when CHUNK_SIZE EQUALS 1
 
@@ -603,7 +655,7 @@ code block, the text below also applies to this module, particularly for the
 first block.
 
 All models in MCE default to 'auto' for chunk_size. The arguments for the block
-are the same as writing a user_func block for the core API.
+are the same as writing a user_func block using the Core API.
 
 Beginning with MCE 1.5, the next input item is placed into the input scalar
 variable $_ when chunk_size equals 1. Otherwise, $_ points to $chunk_ref
@@ -649,7 +701,7 @@ inside the first block. Hence, the block is called once per each item.
 
 =head1 SYNOPSIS when CHUNK_SIZE is GREATER THAN 1
 
-Follow this synopsis when chunk_size equals 'auto' or is greater than 1.
+Follow this synopsis when chunk_size equals 'auto' or greater than 1.
 This means having to loop through the chunk from inside the first block.
 
    use MCE::Flow;
@@ -664,7 +716,7 @@ This means having to loop through the chunk from inside the first block.
 
    mce_flow sub { do_work($_) for (@{ $_ }) }, 1..10000;
 
-   ## Same as above, resembles code using the core API.
+   ## Same as above, resembles code using the Core API.
 
    mce_flow sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -683,21 +735,21 @@ choosing 1 for chunk_size is fine.
 
 The following list 5 options which may be overridden when loading the module.
 
-   use Sereal   qw(encode_sereal decode_sereal);  # Include a serialization
-   use CBOR::XS qw(encode_cbor   decode_cbor  );  #  module of your choice
-   use JSON::XS qw(encode_json   decode_json  );
+   use Sereal qw( encode_sereal decode_sereal );
+   use CBOR::XS qw( encode_cbor decode_cbor );
+   use JSON::XS qw( encode_json decode_json );
 
    use MCE::Flow
-         max_workers => 8,                     ## Default 'auto'
-         chunk_size  => 500,                   ## Default 'auto'
-         tmp_dir     => "/path/to/app/tmp",    ## $MCE::Signal::tmp_dir
-         freeze      => \&encode_sereal,       ## \&Storable::freeze
-         thaw        => \&decode_sereal        ## \&Storable::thaw
+         max_workers => 8,               ## Default 'auto'
+         chunk_size => 500,              ## Default 'auto'
+         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,      ## \&Storable::freeze
+         thaw => \&decode_sereal         ## \&Storable::thaw
    ;
 
 There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise will default back to using
-Storable for serialization.
+attempt to use Sereal if available, otherwise defaults to Storable for
+serialization.
 
    use MCE::Flow Sereal => 1;
 
@@ -705,7 +757,7 @@ Storable for serialization.
       chunk_size => 1
    };
 
-   ## Serialization is through Sereal if available.
+   ## Serialization is by the Sereal module if available.
    my %answer = mce_flow sub { MCE->gather( $_, sqrt $_ ) }, 1..10000;
 
 =head1 CUSTOMIZING MCE
@@ -715,7 +767,7 @@ Storable for serialization.
 =item init
 
 The init function accepts a hash of MCE options. Unlike with MCE::Stream,
-both the gather and bounds_only options may be specified when calling init
+both gather and bounds_only options may be specified when calling init
 (not shown below).
 
    use MCE::Flow;
@@ -738,14 +790,14 @@ both the gather and bounds_only options may be specified when calling init
 
    -- Output
 
-   ## 1 started
-   ## 2 started
    ## 3 started
+   ## 2 started
    ## 4 started
-   ## 4 completed
-   ## 1 completed
+   ## 1 started
    ## 2 completed
+   ## 4 completed
    ## 3 completed
+   ## 1 completed
 
    1 4 9 16 25 36 49 64 81 100 121 144 169 196 225 256 289 324 361
    400 441 484 529 576 625 676 729 784 841 900 961 1024 1089 1156
@@ -760,7 +812,7 @@ both the gather and bounds_only options may be specified when calling init
 
 Like with MCE::Flow::init above, MCE options may be specified using an
 anonymous hash for the first argument. Notice how both max_workers and
-task_name can take an anonymous array for setting values individually
+task_name can take an anonymous array for setting values uniquely
 for each code block.
 
 Unlike MCE::Stream which processes from right-to-left, MCE::Flow begins
@@ -769,10 +821,11 @@ with the first code block, thus processing from left-to-right.
    use MCE::Flow;
 
    my @a = mce_flow {
-      max_workers => [ 3, 4, 2, ], task_name => [ 'a', 'b', 'c' ],
+      task_name   => [ 'a', 'b', 'c' ],
+      max_workers => [  3,   4,   2, ],
 
       user_end => sub {
-         my ($task_id, $task_name) = (MCE->task_id, MCE->task_name);
+         my ($mce, $task_id, $task_name) = @_;
          MCE->print("$task_id - $task_name completed\n");
       },
 
@@ -803,13 +856,28 @@ with the first code block, thus processing from left-to-right.
 =head1 API DOCUMENTATION
 
 Although input data is optional for MCE::Flow, the following assumes chunk_size
-equals 1 in order to demonstrate all the possibilities of passing input data.
+equals 1 in order to demonstrate all the possibilities of passing input data
+into the code block.
 
 =over 3
 
+=item mce_flow { input_data => iterator }, sub { code }
+
+An iterator reference can by specified for input_data. The only other way
+is to specify input_data via MCE::Flow::init. This prevents MCE::Flow from
+configuring the iterator reference as another user task which will not work.
+
+Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+
+   MCE::Flow::init {
+      input_data => iterator
+   };
+
+   mce_flow sub { $_ };
+
 =item mce_flow sub { code }, list
 
-Input data can be defined using a list or passing a reference to an array.
+Input data can be defined using a list.
 
    mce_flow sub { $_ }, 1..1000;
    mce_flow sub { $_ }, [ 1..1000 ];
@@ -838,58 +906,41 @@ optional. The format is passed to sprintf (% may be omitted below).
       begin => $beg, end => $end, step => $step, format => $fmt
    };
 
-=item mce_flow { input_data => iterator }, sub { code }
-
-An iterator reference can by specified for input data. Notice the anonymous
-hash as the first argument to mce_flow. The only other way is to specify
-input_data via MCE::Flow::init. This prevents MCE::Flow from configuring
-the iterator reference as another user task which will not work.
-
-Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
-
-   MCE::Flow::init {
-      input_data => iterator
-   };
-
-   mce_flow sub { $_ };
-
 =back
 
 The sequence engine can compute 'begin' and 'end' items only, for the chunk,
-leaving out the items in between with the bounds_only option (boundaries only).
-This option applies to sequence and has no effect when chunk_size equals 1.
+and not the items in between (hence boundaries only). This option applies
+to sequence only and has no effect when chunk_size equals 1.
 
-The time to run for MCE below is 0.006s. This becomes 0.827s without the
-bounds_only option due to computing all items in between as well, thus
-creating a very large array. Basically, specify bounds_only => 1 when
-boundaries is all you need for looping inside the block; e.g Monte Carlo
-simulations. Time was measured using 1 worker to emphasize the difference.
+The time to run is 0.006s below. This becomes 0.827s without the bounds_only
+option due to computing all items in between, thus creating a very large
+array. Basically, specify bounds_only => 1 when boundaries is all you need
+for looping inside the block; e.g. Monte Carlo simulations.
+
+Time was measured using 1 worker to emphasize the difference.
 
    use MCE::Flow;
 
    MCE::Flow::init {
-      max_workers => 1,
-    # chunk_size  => 'auto',     ## btw, 'auto' will never drop below 2
-      chunk_size  => 1_250_000,
+      max_workers => 1, chunk_size => 1_250_000,
       bounds_only => 1
    };
 
    ## For sequence, the input scalar $_ points to $chunk_ref
-   ## when chunk_size > 1, otherwise equals $chunk_ref->[0].
+   ## when chunk_size > 1, otherwise $chunk_ref->[0].
    ##
    ## mce_flow_s sub {
    ##    my $begin = $_->[0]; my $end = $_->[-1];
    ##
    ##    for ($begin .. $end) {
-   ##       ... have fun with MCE ...
+   ##       ...
    ##    }
    ##
    ## }, 1, 10_000_000;
 
    mce_flow_s sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
-
-      ## $chunk_ref contains just 2 items, not 1_250_000
+      ## $chunk_ref contains 2 items, not 1_250_000
 
       my $begin = $chunk_ref->[ 0];
       my $end   = $chunk_ref->[-1];   ## or $chunk_ref->[1]
@@ -920,8 +971,7 @@ the gather method is used to have results sent back to the manager process.
    my @a = mce_flow sub { MCE->gather($_ * 2) }, 1..100;
    print "@a\n\n";
 
-   ## However, one can store to a hash by gathering 2 items per
-   ## each gather call (key, value).
+   ## Outputs to a hash instead (key, value).
    my %h1 = mce_flow sub { MCE->gather($_, $_ * 2) }, 1..100;
    print "@h1{1..100}\n\n";
 
@@ -990,7 +1040,6 @@ The following uses an anonymous array containing 3 elements when gathering
 data. Serialization is automatic behind the scene.
 
    my %h3 = mce_flow sub {
-
       ...
 
       MCE->gather($host, [$output, $error, $status]);
@@ -1003,45 +1052,42 @@ data. Serialization is automatic behind the scene.
       print "Exit status: ", $h3{$host}->[2], "\n\n";
    }
 
-Perhaps you want more control with gather such as appending to an array while
-retaining output order. Although MCE::Map comes to mind, some folks want "full"
-control. And here we go... but this time around in chunking style... :)
+Although MCE::Map comes to mind, one may want additional control when
+gathering data such as retaining output order.
 
-The two options passed to MCE::Flow are optional as they default to 'auto'. The
-beauty of chunking data is that IPC occurs once per chunk versus once per item.
-Although IPC is quite fast, chunking becomes beneficial the larger the data
-becomes. Hence, the reason for the demonstration below.
-
-   use MCE::Flow chunk_size => 'auto', max_workers => 'auto';
-
-   my (%_tmp, $_gather_ref, $_order_id);
+   use MCE::Flow;
 
    sub preserve_order {
-      $_tmp{ (shift) } = \@_;
+      my %tmp; my $order_id = 1; my $gather_ref = $_[0];
 
-      while (1) {
-         last unless exists $_tmp{$_order_id};
-         push @{ $_gather_ref }, @{ $_tmp{$_order_id} };
-         delete $_tmp{$_order_id++};
-      }
+      return sub {
+         $tmp{ (shift) } = \@_;
 
-      return;
+         while (1) {
+            last unless exists $tmp{$order_id};
+            push @{ $gather_ref }, @{ $tmp{$order_id} };
+            delete $tmp{$order_id++};
+         }
+
+         return;
+      };
    }
 
-   ## Workers persist after running. Therefore, not recommended to
-   ## use a closure for gather unless calling MCE::Flow::init each
-   ## time inside the loop. Use this demonstration when wanting
-   ## MCE::Flow to maintain output order.
+   ## Workers persist for the most part after running. Though, not always
+   ## the case and depends on Perl. Pass a reference to a subroutine if
+   ## workers must persist; e.g. mce_flow { ... }, \&foo, 1..100000.
 
-   MCE::Flow::init { gather => \&preserve_order };
+   MCE::Flow::init {
+      chunk_size => 'auto', max_workers => 'auto'
+   };
 
    for (1..2) {
       my @m2;
 
-      ## Remember to set $_order_id back to 1 prior to running.
-      $_gather_ref = \@m2; $_order_id = 1;
-
-      mce_flow sub {
+      mce_flow {
+         gather => preserve_order(\@m2)
+      },
+      sub {
          my @a; my ($mce, $chunk_ref, $chunk_id) = @_;
 
          ## Compute the entire chunk data at once.
@@ -1056,20 +1102,23 @@ becomes. Hence, the reason for the demonstration below.
       print scalar @m2, "\n";
    }
 
-All 6 models support 'auto' for chunk_size whereas the core API doesn't. Think
-of the models as the basis for providing JIT for MCE. They create the instance
-and tune max_workers plus chunk_size automatically irregardless of the
-hardware being run on.
+   MCE::Flow::finish;
 
-The following does the same thing using the core API.
+All 6 models support 'auto' for chunk_size unlike the Core API. Think of the
+models as the basis for providing JIT for MCE. They create the instance, tune
+max_workers, and tune chunk_size automatically regardless of the hardware.
+
+The following does the same thing using the Core API. Workers persist after
+running.
 
    use MCE;
 
-   ...
+   sub preserve_order {
+      ...
+   }
 
    my $mce = MCE->new(
       max_workers => 'auto', chunk_size => 8000,
-      gather => \&preserve_order,
 
       user_func => sub {
          my @a; my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -1083,9 +1132,15 @@ The following does the same thing using the core API.
       }
    );
 
-   $mce->process([1..100000]);
+   for (1..2) {
+      my @m2;
 
-   ...
+      $mce->process({ gather => preserve_order(\@m2) }, [1..100000]);
+
+      print scalar @m2, "\n";
+   }
+
+   $mce->shutdown;
 
 =head1 MANUAL SHUTDOWN
 
@@ -1093,9 +1148,9 @@ The following does the same thing using the core API.
 
 =item finish
 
-MCE workers remain persistent as much as possible after running. Shutdown
-occurs when the script exits. One can manually shutdown MCE by simply calling
-finish after running. This resets the MCE instance.
+Workers remain persistent as much as possible after running. Shutdown occurs
+automatically when the script terminates. Call finish when workers are no
+longer needed.
 
    use MCE::Flow;
 
