@@ -14,7 +14,7 @@ package MCE::Core::Input::Handle;
 use strict;
 use warnings;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ## Items below are folded into MCE.
 
@@ -25,7 +25,8 @@ use bytes;
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
 
-no warnings 'threads'; no warnings 'uninitialized';
+no warnings 'threads';
+no warnings 'uninitialized';
 
 my $_que_read_size = $MCE::_que_read_size;
 my $_que_template  = $MCE::_que_template;
@@ -38,7 +39,7 @@ my $_que_template  = $MCE::_que_template;
 
 sub _worker_read_handle {
 
-   my $self = $_[0]; my $_proc_type = $_[1]; my $_input_data = $_[2];
+   my ($self, $_proc_type, $_input_data) = @_;
 
    @_ = ();
 
@@ -57,10 +58,20 @@ sub _worker_read_handle {
    my $_wuf         = $self->{_wuf};
 
    my ($_data_size, $_next, $_chunk_id, $_offset_pos, $_IN_FILE, $_tmp_cs);
-   my @_records = (); $_chunk_id = $_offset_pos = 0;
+   my ($_chop_len, $_chop_str, $_p);
+
+   if (length $_RS > 1 && substr($_RS, 0, 1) eq "\n") {
+      $_chop_str = substr($_RS, 1);
+      $_chop_len = length $_chop_str;
+   } else {
+      $_chop_str = '';
+      $_chop_len = 0;
+   }
 
    $_data_size = ($_proc_type == READ_MEMORY)
       ? length ${ $_input_data } : -s $_input_data;
+
+   $_chunk_id  = $_offset_pos = 0;
 
    if ($_chunk_size <= MAX_RECS_SIZE || $_proc_type == READ_MEMORY) {
       open    $_IN_FILE, '<', $_input_data or die "$_input_data: $!\n";
@@ -74,14 +85,14 @@ sub _worker_read_handle {
    $self->{_next_jmp} = sub { goto _WORKER_READ_HANDLE__NEXT; };
    $self->{_last_jmp} = sub { goto _WORKER_READ_HANDLE__LAST; };
 
+   local $_;
+
    _WORKER_READ_HANDLE__NEXT:
 
    while (1) {
+      my @_recs; undef $_ if (length > MAX_CHUNK_SIZE);
 
-      ## Don't declare $_buffer with other vars above, instead it's done here.
-      ## Doing so will fail with Perl 5.8.0 under Solaris 5.10 on large files.
-
-      my $_buffer;
+      $_ = '';
 
       ## Obtain the next chunk_id and offset position.
       sysread $_QUE_R_SOCK, $_next, $_que_read_size;
@@ -93,7 +104,11 @@ sub _worker_read_handle {
          return;
       }
 
-      $_chunk_id++;
+      if (++$_chunk_id > 1 && $_chop_len) {
+         $_p = $_chop_len; $_ = $_chop_str;
+      } else {
+         $_p = 0;
+      }
 
       ## Read data.
       if ($_chunk_size <= MAX_RECS_SIZE) {        ## One or many records.
@@ -101,18 +116,38 @@ sub _worker_read_handle {
          seek $_IN_FILE, $_offset_pos, 0;
 
          if ($_chunk_size == 1) {
-            $_buffer = <$_IN_FILE>;
+            if ($_p) {
+               $_ .= <$_IN_FILE>;
+            } else {
+               $_  = <$_IN_FILE>;
+            }
          }
          else {
             if ($_use_slurpio) {
-               $_buffer .= <$_IN_FILE> for (0 .. $_chunk_size - 1);
+               for my $i (0 .. $_chunk_size - 1) {
+                  $_ .= <$_IN_FILE>;
+               }
             }
             else {
-               for (0 .. $_chunk_size - 1) {
-                  $_records[$_] = <$_IN_FILE>;
-                  unless (defined $_records[$_]) {
-                     delete @_records[$_ .. $_chunk_size - 1];
-                     last;
+               if ($_chop_len) {
+                  $_recs[0]  = ($_chunk_id > 1) ? $_chop_str : '';
+                  $_recs[0] .= <$_IN_FILE>;
+                  for my $i (1 .. $_chunk_size - 1) {
+                     $_recs[$i]  = $_chop_str;
+                     $_recs[$i] .= <$_IN_FILE>;
+                     if (length $_recs[$i] == $_chop_len) {
+                        delete $_recs[$i];
+                        last;
+                     }
+                  }
+               }
+               else {
+                  for my $i (0 .. $_chunk_size - 1) {
+                     $_recs[$i] = <$_IN_FILE>;
+                     unless (defined $_recs[$i]) {
+                        delete $_recs[$i];
+                        last;
+                     }
                   }
                }
             }
@@ -125,7 +160,7 @@ sub _worker_read_handle {
          local $/ = $_RS if ($_RS_FLG);
 
          if ($_proc_type == READ_MEMORY) {
-            if ($_parallel_io) {
+            if ($_parallel_io && ! $_RS_FLG) {
                syswrite $_QUE_W_SOCK,
                   pack($_que_template, $_chunk_id, $_offset_pos + $_chunk_size);
 
@@ -136,15 +171,15 @@ sub _worker_read_handle {
                   $_tmp_cs -= length <$_IN_FILE> || 0;
                }
 
-               if (read($_IN_FILE, $_buffer, $_tmp_cs) == $_tmp_cs) {
-                  $_buffer .= <$_IN_FILE>;
+               if (read($_IN_FILE, $_, $_tmp_cs, $_p) == $_tmp_cs) {
+                  $_ .= <$_IN_FILE>;
                }
             }
             else {
                seek $_IN_FILE, $_offset_pos, 0;
 
-               if (read($_IN_FILE, $_buffer, $_chunk_size) == $_chunk_size) {
-                  $_buffer .= <$_IN_FILE>;
+               if (read($_IN_FILE, $_, $_chunk_size, $_p) == $_chunk_size) {
+                  $_ .= <$_IN_FILE>;
                }
 
                syswrite $_QUE_W_SOCK,
@@ -152,7 +187,7 @@ sub _worker_read_handle {
             }
          }
          else {
-            if ($_parallel_io) {
+            if ($_parallel_io && ! $_RS_FLG) {
                syswrite $_QUE_W_SOCK,
                   pack($_que_template, $_chunk_id, $_offset_pos + $_chunk_size);
 
@@ -167,17 +202,17 @@ sub _worker_read_handle {
                   sysseek $_IN_FILE, $_offset_pos, 0;
                }
 
-               if (sysread($_IN_FILE, $_buffer, $_tmp_cs) == $_tmp_cs) {
+               if (sysread($_IN_FILE, $_, $_tmp_cs, $_p) == $_tmp_cs) {
                   seek $_IN_FILE, sysseek($_IN_FILE, 0, 1), 0;
-                  $_buffer .= <$_IN_FILE>;
+                  $_ .= <$_IN_FILE>;
                }
             }
             else {
                sysseek $_IN_FILE, $_offset_pos, 0;
 
-               if (sysread($_IN_FILE, $_buffer, $_chunk_size) == $_chunk_size) {
+               if (sysread($_IN_FILE, $_, $_chunk_size, $_p) == $_chunk_size) {
                   seek $_IN_FILE, sysseek($_IN_FILE, 0, 1), 0;
-                  $_buffer .= <$_IN_FILE>;
+                  $_ .= <$_IN_FILE>;
                }
                else {
                   seek $_IN_FILE, sysseek($_IN_FILE, 0, 1), 0;
@@ -191,22 +226,34 @@ sub _worker_read_handle {
 
       ## Call user function.
       if ($_use_slurpio) {
-         local $_ = \$_buffer;
-         $_wuf->($self, \$_buffer, $_chunk_id);
+         if ($_chop_len && substr($_, -$_chop_len) eq $_chop_str) {
+            substr($_, -$_chop_len, $_chop_len, '');
+         }
+         local $_ = \$_;
+         $_wuf->($self, $_, $_chunk_id);
       }
       else {
          if ($_chunk_size == 1) {
-            local $_ = $_buffer;
-            $_wuf->($self, [ $_buffer ], $_chunk_id);
+            if ($_chop_len && substr($_, -$_chop_len) eq $_chop_str) {
+               substr($_, -$_chop_len, $_chop_len, '');
+            }
+            $_wuf->($self, [ $_ ], $_chunk_id);
          }
          else {
             if ($_chunk_size > MAX_RECS_SIZE) {
                local $/ = $_RS if ($_RS_FLG);
-               _sync_buffer_to_array(\$_buffer, \@_records);
+               _sync_buffer_to_array(\$_, \@_recs, $_chop_str);
+               undef $_;
             }
-
-            local $_ = \@_records;
-            $_wuf->($self, \@_records, $_chunk_id);
+            if ($_chop_len) {
+               for my $i (0 .. @_recs - 1) {
+                  if (substr($_recs[$i], -$_chop_len) eq $_chop_str) {
+                     substr($_recs[$i], -$_chop_len, $_chop_len, '');
+                  }
+               }
+            }
+            local $_ = \@_recs;
+            $_wuf->($self, \@_recs, $_chunk_id);
          }
       }
    }

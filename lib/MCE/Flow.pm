@@ -16,9 +16,8 @@ use warnings;
 use Scalar::Util qw( looks_like_number );
 
 use MCE;
-use MCE::Util;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -26,8 +25,8 @@ our $VERSION = '1.522';
 ##
 ###############################################################################
 
-our $MAX_WORKERS  = 'auto';
-our $CHUNK_SIZE   = 'auto';
+my $MAX_WORKERS = 'auto';
+my $CHUNK_SIZE  = 'auto';
 
 my ($_params, @_prev_c, @_prev_n, @_prev_w, @_user_tasks);
 my ($_MCE, $_loaded); my $_tag = 'MCE::Flow';
@@ -40,20 +39,31 @@ sub import {
    while (my $_argument = shift) {
       my $_arg = lc $_argument;
 
-      $MAX_WORKERS  = shift and next if ( $_arg eq 'max_workers' );
-      $CHUNK_SIZE   = shift and next if ( $_arg eq 'chunk_size' );
-      $MCE::TMP_DIR = shift and next if ( $_arg eq 'tmp_dir' );
-      $MCE::FREEZE  = shift and next if ( $_arg eq 'freeze' );
-      $MCE::THAW    = shift and next if ( $_arg eq 'thaw' );
+      $MAX_WORKERS = shift and next if ( $_arg eq 'max_workers' );
+      $CHUNK_SIZE  = shift and next if ( $_arg eq 'chunk_size' );
+
+      $MCE::FREEZE = $MCE::MCE->{freeze} = shift and next
+         if ( $_arg eq 'freeze' );
+      $MCE::THAW = $MCE::MCE->{thaw} = shift and next
+         if ( $_arg eq 'thaw' );
 
       if ( $_arg eq 'sereal' ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
             unless ($@) {
-               $MCE::FREEZE = \&encode_sereal;
-               $MCE::THAW   = \&decode_sereal;
+               $MCE::FREEZE = $MCE::MCE->{freeze} = \&encode_sereal;
+               $MCE::THAW = $MCE::MCE->{thaw} = \&decode_sereal;
             }
          }
+         next;
+      }
+
+      if ( $_arg eq 'tmp_dir' ) {
+         $MCE::TMP_DIR = $MCE::MCE->{tmp_dir} = shift;
+         my $_e1 = 'is not a directory or does not exist';
+         my $_e2 = 'is not writeable';
+         _croak("$_tag::import: ($MCE::TMP_DIR) $_e1") unless -d $MCE::TMP_DIR;
+         _croak("$_tag::import: ($MCE::TMP_DIR) $_e2") unless -w $MCE::TMP_DIR;
          next;
       }
 
@@ -68,11 +78,11 @@ sub import {
 
    ## Import functions.
    no strict 'refs'; no warnings 'redefine';
-   my $_package = caller;
+   my $_pkg = caller;
 
-   *{ $_package . '::mce_flow_f' } = \&mce_flow_f;
-   *{ $_package . '::mce_flow_s' } = \&mce_flow_s;
-   *{ $_package . '::mce_flow'   } = \&mce_flow;
+   *{ $_pkg.'::mce_flow_f' } = \&run_file;
+   *{ $_pkg.'::mce_flow_s' } = \&run_seq;
+   *{ $_pkg.'::mce_flow'   } = \&run;
 
    return;
 }
@@ -80,7 +90,7 @@ sub import {
 END {
    return if (defined $_MCE && $_MCE->wid);
 
-   MCE::Flow::finish();
+   finish();
 }
 
 ###############################################################################
@@ -91,23 +101,24 @@ END {
 
 sub init (@) {
 
+   shift if (defined $_[0] && $_[0] eq 'MCE::Flow');
+
    if (MCE->wid) {
       @_ = (); _croak(
          "$_tag: function cannot be called by the worker process"
       );
    }
 
-   _croak("$_tag: (argument) is not a HASH reference")
-      unless (ref $_[0] eq 'HASH');
+   finish(); $_params = (ref $_[0] eq 'HASH') ? shift : { @_ };
 
-   MCE::Flow::finish(); $_params = shift;
+   @_ = ();
 
    return;
 }
 
 sub finish () {
 
-   if (defined $_MCE) {
+   if (defined $_MCE && $_MCE->{_spawned}) {
       MCE::_save_state; $_MCE->shutdown(); MCE::_restore_state;
    }
 
@@ -122,17 +133,11 @@ sub finish () {
 ##
 ###############################################################################
 
-sub mce_flow_f (@) {
+sub run_file (@) {
+
+   shift if (defined $_[0] && $_[0] eq 'MCE::Flow');
 
    my ($_file, $_pos); my $_start_pos = (ref $_[0] eq 'HASH') ? 2 : 1;
-
-   for ($_start_pos .. @_ - 1) {
-      my $_r = ref $_[$_];
-      if ($_r eq '' || $_r eq 'GLOB' || $_r eq 'SCALAR' || $_r =~ /^IO::/) {
-         $_file = $_[$_]; $_pos = $_;
-         last;
-      }
-   }
 
    if (defined $_params) {
       delete $_params->{input_data} if (exists $_params->{input_data});
@@ -140,6 +145,14 @@ sub mce_flow_f (@) {
    }
    else {
       $_params = {};
+   }
+
+   for ($_start_pos .. @_ - 1) {
+      my $_r = ref $_[$_];
+      if ($_r eq '' || $_r eq 'GLOB' || $_r eq 'SCALAR' || $_r =~ /^IO::/) {
+         $_file = $_[$_]; $_pos = $_;
+         last;
+      }
    }
 
    if (defined $_file && ref $_file eq '' && $_file ne '') {
@@ -159,7 +172,7 @@ sub mce_flow_f (@) {
       pop @_ for ($_pos .. @_ - 1);
    }
 
-   return mce_flow(@_);
+   return run(@_);
 }
 
 ###############################################################################
@@ -168,12 +181,20 @@ sub mce_flow_f (@) {
 ##
 ###############################################################################
 
-sub mce_flow_s (@) {
+sub run_seq (@) {
+
+   shift if (defined $_[0] && $_[0] eq 'MCE::Flow');
 
    my ($_begin, $_end, $_pos); my $_start_pos = (ref $_[0] eq 'HASH') ? 2 : 1;
 
-   delete $_params->{sequence}
-      if (exists $_params->{sequence});
+   if (defined $_params) {
+      delete $_params->{sequence}   if (exists $_params->{sequence});
+      delete $_params->{input_data} if (exists $_params->{input_data});
+      delete $_params->{_file}      if (exists $_params->{_file});
+   }
+   else {
+      $_params = {};
+   }
 
    for ($_start_pos .. @_ - 1) {
       my $_ref = ref $_[$_];
@@ -200,14 +221,6 @@ sub mce_flow_s (@) {
       }
    }
 
-   if (defined $_params) {
-      delete $_params->{input_data} if (exists $_params->{input_data});
-      delete $_params->{_file}      if (exists $_params->{_file});
-   }
-   else {
-      $_params = {};
-   }
-
    _croak("$_tag: (sequence) is not specified or valid")
       unless (exists $_params->{sequence});
 
@@ -217,11 +230,13 @@ sub mce_flow_s (@) {
    _croak("$_tag: (end) is not specified for sequence")
       unless (defined $_end);
 
+   $_params->{sequence_run} = 1;
+
    if (defined $_pos) {
       pop @_ for ($_pos .. @_ - 1);
    }
 
-   return mce_flow(@_);
+   return run(@_);
 }
 
 ###############################################################################
@@ -230,7 +245,9 @@ sub mce_flow_s (@) {
 ##
 ###############################################################################
 
-sub mce_flow (@) {
+sub run (@) {
+
+   shift if (defined $_[0] && $_[0] eq 'MCE::Flow');
 
    if (MCE->wid) {
       @_ = (); _croak(
@@ -309,10 +326,11 @@ sub mce_flow (@) {
    );
 
    if (defined $_params) {
-      $_input_data = $_params->{input_data} if (exists $_params->{input_data});
-
       if (exists $_params->{_file}) {
-         $_input_data = $_params->{_file}; delete $_params->{_file};
+         $_input_data = delete $_params->{_file};
+      }
+      else {
+         $_input_data = $_params->{input_data} if exists $_params->{input_data};
       }
    }
 
@@ -333,6 +351,7 @@ sub mce_flow (@) {
          my $_p = $_params;
 
          foreach (keys %{ $_p }) {
+            next if ($_ eq 'sequence_run');
             next if ($_ eq 'max_workers' && ref $_p->{max_workers} eq 'ARRAY');
             next if ($_ eq 'task_name' && ref $_p->{task_name} eq 'ARRAY');
             next if ($_ eq 'input_data');
@@ -348,16 +367,16 @@ sub mce_flow (@) {
       $_MCE = MCE->new(%_options);
    }
    else {
-      ## Workers may persist after running. MCE::Flow allows options
-      ## to be passed using an anonymous hash. Therefore, lets update
-      ## the MCE instance. These options do not require respawning.
-
-      for (qw(
-         RS interval stderr_file stdout_file user_error user_output
-         job_delay submit_delay on_post_exit on_post_run user_args
-         flush_file flush_stderr flush_stdout gather
-      )) {
-         $_MCE->{$_} = $_params->{$_} if (exists $_params->{$_});
+      ## Workers may persist after running. Thus, updating the MCE instance.
+      ## These options do not require respawning.
+      if (defined $_params) {
+         for (qw(
+            RS interval stderr_file stdout_file user_error user_output
+            job_delay submit_delay on_post_exit on_post_run user_args
+            flush_file flush_stderr flush_stdout gather
+         )) {
+            $_MCE->{$_} = $_params->{$_} if (exists $_params->{$_});
+         }
       }
    }
 
@@ -366,16 +385,23 @@ sub mce_flow (@) {
    my @_a; my $_wa = wantarray; $_MCE->{gather} = \@_a if (defined $_wa);
 
    if (defined $_input_data) {
-      @_ = (); $_MCE->process({ chunk_size => $_chunk_size }, $_input_data);
+      @_ = ();
+      $_MCE->process({ chunk_size => $_chunk_size }, $_input_data);
+      delete $_MCE->{input_data};
    }
    elsif (scalar @_) {
       $_MCE->process({ chunk_size => $_chunk_size }, \@_);
+      delete $_MCE->{input_data};
    }
    else {
       if (defined $_params && exists $_params->{sequence}) {
          $_MCE->run({
             chunk_size => $_chunk_size, sequence => $_params->{sequence}
          }, 0);
+         if (exists $_params->{sequence_run}) {
+            delete $_params->{sequence_run};
+            delete $_params->{sequence};
+         }
          delete $_MCE->{sequence};
       }
       else {
@@ -386,6 +412,12 @@ sub mce_flow (@) {
    delete $_MCE->{gather} if (defined $_wa);
 
    MCE::_restore_state;
+
+   if (exists $_MCE->{_rla_return}) {
+      $MCE::MCE->{_rla_return} = delete $_MCE->{_rla_return};
+   }
+
+   finish() if ($^S);   ## shutdown if in eval state
 
    return ((defined $_wa) ? @_a : ());
 }
@@ -422,6 +454,8 @@ sub _validate_number {
 
    my ($_n, $_key) = @_;
 
+   _croak("$_tag: ($_key) is not valid") if (!defined $_n);
+
    $_n =~ s/K\z//i; $_n =~ s/M\z//i;
 
    if (!looks_like_number($_n) || int($_n) != $_n || $_n < 1) {
@@ -447,7 +481,7 @@ MCE::Flow - Parallel flow model for building creative applications
 
 =head1 VERSION
 
-This document describes MCE::Flow version 1.522
+This document describes MCE::Flow version 1.600
 
 =head1 DESCRIPTION
 
@@ -485,8 +519,7 @@ This calls for preserving output order.
 
          while (1) {
             last unless exists $tmp{$order_id};
-            push @{ $gather_ref }, @{ $tmp{$order_id} };
-            delete $tmp{$order_id++};
+            push @{ $gather_ref }, @{ delete $tmp{$order_id++} };
          }
 
          return;
@@ -764,7 +797,9 @@ serialization.
 
 =over 3
 
-=item init
+=item MCE::Flow->init ( options )
+
+=item MCE::Flow::init { options }
 
 The init function accepts a hash of MCE options. Unlike with MCE::Stream,
 both gather and bounds_only options may be specified when calling init
@@ -861,6 +896,8 @@ into the code block.
 
 =over 3
 
+=item MCE::Flow->run ( { input_data => iterator }, sub { code } )
+
 =item mce_flow { input_data => iterator }, sub { code }
 
 An iterator reference can by specified for input_data. The only other way
@@ -875,12 +912,16 @@ Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
 
    mce_flow sub { $_ };
 
+=item MCE::Flow->run ( sub { code }, list )
+
 =item mce_flow sub { code }, list
 
 Input data can be defined using a list.
 
    mce_flow sub { $_ }, 1..1000;
    mce_flow sub { $_ }, [ 1..1000 ];
+
+=item MCE::Flow->run_file ( sub { code }, file )
 
 =item mce_flow_f sub { code }, file
 
@@ -891,7 +932,9 @@ position among themselves without any interaction from the manager process.
    mce_flow_f sub { $_ }, $file_handle;
    mce_flow_f sub { $_ }, \$scalar;
 
-=item mce_flow_s sub { code }, sequence
+=item MCE::Flow->run_seq ( sub { code }, $beg, $end [, $step, $fmt ] )
+
+=item mce_flow_s sub { code }, $beg, $end [, $step, $fmt ]
 
 Sequence can be defined as a list, an array reference, or a hash reference.
 The functions require both begin and end values to run. Step and format are
@@ -1065,8 +1108,7 @@ gathering data such as retaining output order.
 
          while (1) {
             last unless exists $tmp{$order_id};
-            push @{ $gather_ref }, @{ $tmp{$order_id} };
-            delete $tmp{$order_id++};
+            push @{ $gather_ref }, @{ delete $tmp{$order_id++} };
          }
 
          return;
@@ -1146,7 +1188,9 @@ running.
 
 =over 3
 
-=item finish
+=item MCE::Flow->finish
+
+=item MCE::Flow::finish
 
 Workers remain persistent as much as possible after running. Shutdown occurs
 automatically when the script terminates. Call finish when workers are no

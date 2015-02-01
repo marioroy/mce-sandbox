@@ -14,7 +14,7 @@ package MCE::Core::Input::Sequence;
 use strict;
 use warnings;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ## Items below are folded into MCE.
 
@@ -23,7 +23,8 @@ package MCE;
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
 
-no warnings 'threads'; no warnings 'uninitialized';
+no warnings 'threads';
+no warnings 'uninitialized';
 
 my $_que_read_size = $MCE::_que_read_size;
 my $_que_template  = $MCE::_que_template;
@@ -36,7 +37,7 @@ my $_que_template  = $MCE::_que_template;
 
 sub _worker_sequence_queue {
 
-   my $self = $_[0];
+   my ($self) = @_;
 
    @_ = ();
 
@@ -74,6 +75,10 @@ sub _worker_sequence_queue {
    $self->{_next_jmp} = sub { goto _WORKER_SEQUENCE__NEXT; };
    $self->{_last_jmp} = sub { goto _WORKER_SEQUENCE__LAST; };
 
+   local $_;
+
+   _WORKER_SEQUENCE__NEXT:
+
    while (1) {
 
       ## Obtain the next chunk_id and sequence number.
@@ -92,10 +97,9 @@ sub _worker_sequence_queue {
 
       ## Call user function.
       if ($_chunk_size == 1) {
-         $_seq_n = $_offset * $_step + $_begin;
-         $_seq_n = sprintf("%$_fmt", $_seq_n) if (defined $_fmt);
-         local $_ = $_seq_n;
-         $_wuf->($self, $_seq_n, $_chunk_id);
+         $_ = $_offset * $_step + $_begin;
+         $_ = sprintf("%$_fmt", $_) if (defined $_fmt);
+         $_wuf->($self, $_, $_chunk_id);
       }
       else {
          my $_n_begin = ($_offset * $_chunk_size) * $_step + $_begin;
@@ -153,7 +157,7 @@ sub _worker_sequence_queue {
          else {
             if ($_begin < $_end) {
                if (!defined $_fmt && $_step == 1) {
-                  local $_ = ($_seq_n + $_chunk_size <= $_end)
+                  $_ = ($_seq_n + $_chunk_size <= $_end)
                      ? [ $_seq_n .. $_seq_n + $_chunk_size - 1 ]
                      : [ $_seq_n .. $_end ];
 
@@ -185,11 +189,9 @@ sub _worker_sequence_queue {
 
          ## -------------------------------------------------------------------
 
-         local $_ = \@_n;
+         $_ = \@_n;
          $_wuf->($self, \@_n, $_chunk_id);
       }
-
-      _WORKER_SEQUENCE__NEXT:
    }
 
    _WORKER_SEQUENCE__LAST:

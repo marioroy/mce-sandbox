@@ -14,7 +14,7 @@ package MCE::Core::Validation;
 use strict;
 use warnings;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ## Items below are folded into MCE.
 
@@ -23,7 +23,8 @@ package MCE;
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
 
-no warnings 'threads'; no warnings 'uninitialized';
+no warnings 'threads';
+no warnings 'uninitialized';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -34,6 +35,8 @@ no warnings 'threads'; no warnings 'uninitialized';
 sub _validate_args {
 
    my $_s = $_[0];
+
+   @_ = ();
 
    die 'Private method called' unless (caller)[0]->isa( ref $_s );
 
@@ -80,11 +83,11 @@ sub _validate_args {
    _croak("$_tag: (flush_stdout) is not 0 or 1")
       if ($_s->{flush_stdout} && $_s->{flush_stdout} !~ /\A[01]\z/);
 
-   $_s->_validate_args_s();
+   _validate_args_s($_s);
 
    if (defined $_s->{user_tasks}) {
       for my $_t (@{ $_s->{user_tasks} }) {
-         $_s->_validate_args_s($_t);
+         _validate_args_s($_s, $_t);
 
          _croak("$_tag: (task_end) is not a CODE reference")
             if ($_t->{task_end} && ref $_t->{task_end} ne 'CODE');
@@ -110,24 +113,26 @@ sub _validate_args_s {
 
    my $_tag = 'MCE::_validate_args_s';
 
-   $_s->{max_workers} = _parse_max_workers($_s->{max_workers});
-
-   _croak("$_tag: (max_workers) is not valid")
-      if (defined $_s->{max_workers} && (
-         $_s->{max_workers} !~ /\A\d+\z/
-      ));
-
-   if ($_s->{chunk_size} =~ /([0-9\.]+)K\z/i) {
-      $_s->{chunk_size} = int($1 * 1024 + 0.5);
-   }
-   elsif ($_s->{chunk_size} =~ /([0-9\.]+)M\z/i) {
-      $_s->{chunk_size} = int($1 * 1024 * 1024 + 0.5);
+   if (defined $_s->{max_workers}) {
+      $_s->{max_workers} = _parse_max_workers($_s->{max_workers});
+      _croak("$_tag: (max_workers) is not valid")
+         if ($_s->{max_workers} !~ /\A\d+\z/);
    }
 
-   _croak("$_tag: (chunk_size) is not valid")
-      if (defined $_s->{chunk_size} && (
-         $_s->{chunk_size} !~ /\A\d+\z/ or $_s->{chunk_size} == 0
-      ));
+   if (defined $_s->{chunk_size}) {
+      if ($_s->{chunk_size} =~ /([0-9\.]+)K\z/i) {
+         $_s->{chunk_size} = int($1 * 1024 + 0.5);
+      }
+      elsif ($_s->{chunk_size} =~ /([0-9\.]+)M\z/i) {
+         $_s->{chunk_size} = int($1 * 1024 * 1024 + 0.5);
+      }
+
+      _croak("$_tag: (chunk_size) is not valid")
+         if ($_s->{chunk_size} !~ /\A\d+\z/ or $_s->{chunk_size} == 0);
+
+      $_s->{chunk_size} = MAX_CHUNK_SIZE
+         if ($_s->{chunk_size} > MAX_CHUNK_SIZE);
+   }
 
    _croak("$_tag: (RS) is not valid")
       if ($_s->{RS} && ref $_s->{RS} ne '');
@@ -145,6 +150,12 @@ sub _validate_args_s {
       _croak("$_tag: (gather) is not a valid reference")
          if ( $_ref ne 'MCE::Queue' && $_ref ne 'Thread::Queue' &&
               $_ref ne 'ARRAY' && $_ref ne 'HASH' && $_ref ne 'CODE' );
+   }
+
+   if (defined $_s->{init_relay}) {
+      my $_ref = ref $_s->{init_relay};
+      _croak("$_tag: (init_relay) is not valid")
+         if ($_ref ne '' && $_ref ne 'ARRAY' && $_ref ne 'HASH');
    }
 
    if (defined $_s->{sequence}) {
@@ -223,6 +234,10 @@ sub _validate_args_s {
 sub _validate_runstate {
 
    my $self = $_[0]; my $_tag = $_[1];
+
+   @_ = ();
+
+   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
    _croak("$_tag: method cannot be called by the worker process")
       if ($self->{_wid});

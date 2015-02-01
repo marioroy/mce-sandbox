@@ -9,16 +9,11 @@ package MCE::Signal;
 use strict;
 use warnings;
 
-use Time::HiRes qw( sleep time );
-use Fcntl qw( :flock O_RDONLY );
-use base qw( Exporter );
-
-our $VERSION = '1.522';
-
-our ($has_threads, $main_proc_id, $prog_name);
 our ($display_die_with_localtime, $display_warn_with_localtime);
+our ($has_threads, $main_proc_id, $prog_name, $tmp_dir);
 
 BEGIN {
+   require Carp;
    require File::Path;
 
    $main_proc_id =  $$;
@@ -26,7 +21,11 @@ BEGIN {
    $prog_name    =~ s{^.*[\\/]}{}g;
 }
 
-our $tmp_dir = undef;
+use Time::HiRes qw( sleep time );
+use Fcntl qw( :flock O_RDONLY );
+use base qw( Exporter );
+
+our $VERSION = '1.600';
 
 our @EXPORT_OK = qw( $tmp_dir sys_cmd stop_and_exit );
 our %EXPORT_TAGS = (
@@ -40,11 +39,11 @@ our %EXPORT_TAGS = (
 ##
 ###############################################################################
 
-sub _croak { require Carp; goto &Carp::croak; }
-sub _usage { return _croak "MCE::Signal error: $_[0] is not a valid option"; }
+sub _croak { $\ = undef; goto &Carp::croak; }
+sub _usage { return _croak "MCE::Signal error: ($_[0]) is not a valid option"; }
 sub _flag  { return 1; }
 
-my $_is_mswin32   = ($^O eq 'MSWin32');
+my $_is_mswin32   = ($^O eq 'MSWin32') ? 1 : 0;
 my $_keep_tmp_dir = 0;
 my $_no_sigmsg    = 0;
 my $_no_kill9     = 0;
@@ -119,7 +118,12 @@ sub import {
 ##
 ###############################################################################
 
-our ($mce_sess_dir_ref, $mce_spawned_ref);
+my ($_mce_sess_dir_ref, $_mce_spawned_ref);
+
+sub _set_session_vars {
+   ($_mce_sess_dir_ref, $_mce_spawned_ref) = @_;
+   return;
+}
 
 ## Set traps to catch signals.
 $SIG{XCPU} = \&stop_and_exit if (exists $SIG{XCPU});   ## UNIX SIG 24
@@ -147,7 +151,7 @@ END {
    my $_exit_status = $?;
 
    MCE::Signal->_shutdown_mce($_exit_status)
-      if (defined $mce_spawned_ref);
+      if (defined $_mce_spawned_ref);
 
    MCE::Signal->stop_and_exit($_exit_status)
       if ($$ == $main_proc_id);
@@ -204,6 +208,8 @@ sub sys_cmd {
       __DIE__ __WARN__ HUP INT PIPE QUIT TERM CHLD XCPU XFSZ
    );
 
+   sub _NOOP { }
+
    sub stop_and_exit {
 
       shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
@@ -213,16 +219,16 @@ sub sys_cmd {
       my $_is_sig      = 0;
 
       if (exists $_sig_name_lkup{$_sig_name}) {
-         $mce_spawned_ref = undef;
-         $SIG{$_sig_name} = sub { };
+         $_mce_spawned_ref = undef;
+         $SIG{$_sig_name} = \&_NOOP;
          $_exit_status = $_is_sig = 1;
       }
       else {
          $_exit_status = $_sig_name if ($_sig_name ne '0');
       }
 
-      $SIG{TERM} = sub { } if ($_sig_name ne 'TERM');
-      $SIG{__DIE__} = $SIG{__WARN__} = sub { };
+      $SIG{INT} = \&_NOOP if ($_sig_name ne 'INT');
+      $SIG{__DIE__} = $SIG{__WARN__} = \&_NOOP;
 
       ## ----------------------------------------------------------------------
 
@@ -244,7 +250,7 @@ sub sys_cmd {
                elsif ($_sig_name eq 'XFSZ') {
                   $_err_msg = 'exceeded file size limit, exiting';
                }
-               elsif ($_sig_name eq 'TERM' && -f "$tmp_dir/died") {
+               elsif ($_sig_name eq 'INT' && -f "$tmp_dir/died") {
                   $_err_msg = 'caught signal (__DIE__), exiting';
                }
                elsif ($_sig_name eq '__DIE__') {
@@ -262,23 +268,23 @@ sub sys_cmd {
                open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
 
                ## Signal process group to terminate.
-               kill('TERM', $_is_mswin32 ? -$$ : -getpgrp);
+               kill('INT', $_is_mswin32 ? -$$ : -getpgrp);
 
                ## Pause a bit.
                if ($_sig_name ne 'PIPE') {
-                  sleep 0.066 for (1..3);
+                  sleep 0.065 for (1..3);
                } else {
-                  sleep 0.011 for (1..2);
+                  sleep 0.015 for (1..2);
                }
             }
 
             ## Remove temp directory.
             if (defined $tmp_dir && $tmp_dir ne '' && -d $tmp_dir) {
 
-               if (defined $mce_sess_dir_ref) {
-                  foreach my $_sess_dir (keys %{ $mce_sess_dir_ref }) {
+               if (defined $_mce_sess_dir_ref) {
+                  foreach my $_sess_dir (keys %{ $_mce_sess_dir_ref }) {
                      File::Path::rmtree($_sess_dir);
-                     delete $mce_sess_dir_ref->{$_sess_dir};
+                     delete $_mce_sess_dir_ref->{$_sess_dir};
                   }
                }
 
@@ -299,12 +305,10 @@ sub sys_cmd {
                if ($_sig_name ne 'PIPE' && $_no_sigmsg == 0) {
                   print {*STDERR} "\n";
                }
-
                if ($_no_kill9 == 1 || $_sig_name eq 'PIPE') {
-                  kill('TERM', $_is_mswin32 ? -$$ : -getpgrp, $main_proc_id);
-               }
-               else {
-                  kill('KILL', $_is_mswin32 ? -$$ : -getpgrp, $main_proc_id);
+                  kill('INT', $_is_mswin32 ? -$$ : -getpgrp);
+               } else {
+                  kill('KILL', -$$, $main_proc_id);
                }
             }
          }
@@ -334,7 +338,11 @@ sub sys_cmd {
                local $@; eval {
                   open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
                };
-               kill('TERM', $main_proc_id, -$$);
+               if ($_sig_name eq 'PIPE') {
+                  kill('PIPE', $main_proc_id, -$$);
+               } else {
+                  kill('INT', $main_proc_id, -$$);
+               }
             }
 
             ## Release lock.
@@ -347,7 +355,7 @@ sub sys_cmd {
 
       ## Exit thread/process with status.
       if ($_is_sig == 1 && $_no_kill9 == 0) {
-         sleep 0.066 for (1..6);
+         sleep 0.065 for (1..6);
       }
 
       if ($has_threads && threads->can('exit')) {
@@ -355,8 +363,6 @@ sub sys_cmd {
       }
 
       CORE::exit($_exit_status);
-
-      return;
    }
 }
 
@@ -372,20 +378,20 @@ sub _shutdown_mce {
    shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
    my $_exit_status = $_[0] || $?;
 
-   if (defined $mce_spawned_ref) {
+   if (defined $_mce_spawned_ref) {
       my $_tid = ($has_threads) ? threads->tid() : '';
       $_tid = '' unless defined $_tid;
 
-      foreach my $_mce_sid (keys %{ $mce_spawned_ref }) {
-         if ($mce_spawned_ref->{$_mce_sid}->wid()) {
-            $mce_spawned_ref->{$_mce_sid}->exit($_exit_status);
+      foreach my $_mce_sid (keys %{ $_mce_spawned_ref }) {
+         if ($_mce_spawned_ref->{$_mce_sid}->wid()) {
+            $_mce_spawned_ref->{$_mce_sid}->exit($_exit_status);
          }
          else {
-            $mce_spawned_ref->{$_mce_sid}->shutdown()
+            $_mce_spawned_ref->{$_mce_sid}->shutdown()
                if ($_mce_sid =~ /\A$$\.$_tid\./);
          }
 
-         delete $mce_spawned_ref->{$_mce_sid};
+         delete $_mce_spawned_ref->{$_mce_sid};
       }
    }
 
@@ -402,25 +408,31 @@ sub _die_handler {
 
    shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
 
-   CORE::die(@_) if $^S;      ## Direct to CORE::die if executing an eval
+   if (!defined $^S || $^S) {                             ## Perl state
+      my $_lmsg = Carp::longmess();
+      if ($_lmsg =~ /^[^\n]+\n\teval /) {                 ## In eval?
+         CORE::die(@_);
+      }
+   }
 
    local $\ = undef;
 
    ## Set $MCE::Signal::display_die_with_localtime = 1;
    ## when wanting the output to contain the localtime.
 
-   if ($MCE::Signal::display_die_with_localtime) {
-      my $_time_stamp = localtime;
-      print {*STDERR} "## $_time_stamp: $prog_name: ERROR:\n", $_[0];
-   }
-   else {
-      print {*STDERR} $_[0];
+   if (defined $_[0]) {
+      if ($MCE::Signal::display_die_with_localtime) {
+         my $_time_stamp = localtime;
+         print {*STDERR} "## $_time_stamp: $prog_name: ERROR:\n", $_[0];
+      }
+      else {
+         print {*STDERR} $_[0];
+      }
    }
 
    MCE::Signal->stop_and_exit('__DIE__');
-   CORE::exit;
 
-   return;
+   CORE::exit;
 }
 
 sub _warn_handler {
@@ -432,7 +444,8 @@ sub _warn_handler {
    return if (
       $_[0] =~ /^A thread exited while \d+ threads were running/ ||
       $_[0] =~ /^Attempt to free unreferenced scalar/            ||
-      $_[0] =~ /^Perl exited with active threads/
+      $_[0] =~ /^Perl exited with active threads/                ||
+      $_[0] =~ /^Thread \d+ terminated abnormally/
    );
 
    local $\ = undef;
@@ -440,12 +453,14 @@ sub _warn_handler {
    ## Set $MCE::Signal::display_warn_with_localtime = 1;
    ## when wanting the output to contain the localtime.
 
-   if ($MCE::Signal::display_warn_with_localtime) {
-      my $_time_stamp = localtime;
-      print {*STDERR} "## $_time_stamp: $prog_name: WARNING:\n", $_[0];
-   }
-   else {
-      print {*STDERR} $_[0];
+   if (defined $_[0]) {
+      if ($MCE::Signal::display_warn_with_localtime) {
+         my $_time_stamp = localtime;
+         print {*STDERR} "## $_time_stamp: $prog_name: WARNING:\n", $_[0];
+      }
+      else {
+         print {*STDERR} $_[0];
+      }
    }
 
    return;
@@ -467,7 +482,7 @@ MCE::Signal - Temporary directory creation/cleanup and signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.522
+This document describes MCE::Signal version 1.600
 
 =head1 SYNOPSIS
 

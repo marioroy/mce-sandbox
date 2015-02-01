@@ -14,7 +14,7 @@ package MCE::Core::Input::Iterator;
 use strict;
 use warnings;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ## Items below are folded into MCE.
 
@@ -23,7 +23,8 @@ package MCE;
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
 
-no warnings 'threads'; no warnings 'uninitialized';
+no warnings 'threads';
+no warnings 'uninitialized';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -33,7 +34,7 @@ no warnings 'threads'; no warnings 'uninitialized';
 
 sub _worker_user_iterator {
 
-   my $self = $_[0];
+   my ($self) = @_;
 
    @_ = ();
 
@@ -51,21 +52,21 @@ sub _worker_user_iterator {
    my $_I_FLG       = (!$/ || $/ ne $LF);
    my $_wuf         = $self->{_wuf};
 
-   my ($_chunk_id, $_len, $_chunk_ref, $_is_ref);
+   my ($_chunk_id, $_len, $_is_ref);
 
    ## -------------------------------------------------------------------------
 
    $self->{_next_jmp} = sub { goto _WORKER_USER_ITERATOR__NEXT; };
    $self->{_last_jmp} = sub { goto _WORKER_USER_ITERATOR__LAST; };
 
+   local $_;
+
    _WORKER_USER_ITERATOR__NEXT:
 
    while (1) {
+      undef $_ if (length > MAX_CHUNK_SIZE);
 
-      ## Don't declare $_buffer with other vars above, instead it's done here.
-      ## Doing so will fail with Perl 5.8.0 under Solaris 5.10 on large files.
-
-      my $_buffer;
+      $_ = '';
 
       ## Obtain the next chunk of data.
       {
@@ -83,20 +84,20 @@ sub _worker_user_iterator {
          $_is_ref = chop $_len;
 
          chomp($_chunk_id = <$_DAU_W_SOCK>);
-         read $_DAU_W_SOCK, $_buffer, $_len;
+         read $_DAU_W_SOCK, $_, $_len;
 
          flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
       }
 
       ## Call user function.
       if ($_is_ref) {
-         $_chunk_ref = $self->{thaw}($_buffer); undef $_buffer;
-      } else {
-         $_chunk_ref = [ $_buffer ];
+         my $_chunk_ref = $self->{thaw}($_); undef $_;
+         $_ = ($_chunk_size == 1) ? $_chunk_ref->[0] : $_chunk_ref;
+         $_wuf->($self, $_chunk_ref, $_chunk_id);
       }
-
-      local $_ = ($_chunk_size == 1) ? $_chunk_ref->[0] : $_chunk_ref;
-      $_wuf->($self, $_chunk_ref, $_chunk_id);
+      else {
+         $_wuf->($self, [ $_ ], $_chunk_id);
+      }
    }
 
    _WORKER_USER_ITERATOR__LAST:

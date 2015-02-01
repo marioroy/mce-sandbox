@@ -14,7 +14,7 @@ use warnings;
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 our @EXPORT_OK = qw( get_ncpu );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
@@ -126,6 +126,8 @@ sub _parse_max_workers {
 
    my ($_max_workers) = @_;
 
+   @_ = ();
+
    return $_max_workers unless (defined $_max_workers);
 
    if ($_max_workers =~ /^auto(?:$|\s*([\-\+\/\*])\s*(.+)$)/i) {
@@ -151,6 +153,8 @@ sub _parse_chunk_size {
 
    my ($_chunk_size, $_max_workers, $_params, $_input_data, $_array_size) = @_;
 
+   @_ = ();
+
    return $_chunk_size if (!defined $_chunk_size || !defined $_max_workers);
 
    if (defined $_params && exists $_params->{chunk_size}) {
@@ -165,6 +169,13 @@ sub _parse_chunk_size {
    }
 
    if ($_chunk_size eq 'auto') {
+
+      if ( (defined $_params && ref $_params->{input_data} eq 'CODE') ||
+           (defined $_input_data && ref $_input_data eq 'CODE')
+      ) {
+         return 1;
+      }
+
       my $_size = (defined $_input_data && ref $_input_data eq 'ARRAY')
          ? scalar @{ $_input_data } : $_array_size;
 
@@ -243,7 +254,7 @@ MCE::Util - Utility functions for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.522
+This document describes MCE::Util version 1.600
 
 =head1 SYNOPSIS
 

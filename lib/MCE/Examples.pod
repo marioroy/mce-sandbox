@@ -5,14 +5,14 @@ MCE::Examples - A list of examples demonstrating Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.522
+This document describes MCE::Examples version 1.600
 
 =head1 DESCRIPTION
 
 MCE comes with various examples showing real-world scenarios on parallelizing
 something as small as cat (try with -n) to searching for patterns and word
 count aggregation. MCE 1.522 adds sampledb to the list demonstrating DBI
-with MCE.
+with MCE. MCE 1.600 adds biofasta (folder), mutex.pl, and relay.pl.
 
 =head1 INCLUDED WITH THE DISTRIBUTION
 
@@ -49,7 +49,7 @@ The following scripts are located under the examples directory.
         Demonstrates MCE::Flow, MCE::Queue, and MCE->gather.
 
    foreach.pl, forseq.pl, forchunk.pl
-        This example demonstrates the sqrt example from Parallel::Loops.
+        These examples demonstrate the sqrt example from Parallel::Loops.
         Parallel::Loops utilizes Parallel::ForkManager.
 
         Tested on Mac OS X 10.9.5; with Perl 5.16.2; 2.6 GHz Core i7;
@@ -57,12 +57,13 @@ The following scripts are located under the examples directory.
         in 1 second. Output was directed to >/dev/null during testing.
 
         Parallel::Loops:        800  Forking each @input is expensive
-        MCE->foreach...:     70,000  Workers persist between each @input
+        MCE->foreach...:     80,000  Workers persist between each @input
         MCE->forseq....:    200,000  Uses sequence of numbers as input
         MCE->forchunk..:  1,000,000  IPC overhead is greatly reduced
 
-   interval.pl
+   interval.pl, mutex.pl, relay.pl
         Demonstration of the interval option appearing in MCE 1.5.
+        Mutex locking and receiving and passing on information.
 
    iterator.pl
         Similar to forseq.pl. Specifies an iterator for input_data.
@@ -85,6 +86,9 @@ The following scripts are located under the examples directory.
         Process input containing unicode data.
 
 The rest are organized into various sub directories.
+
+   biofasta/fasta_aidx.pl, fasta_rdr*.pl
+        Parallel demonstration for Bioinformatics.
 
    matmult/matmult_base*.pl, matmult_mce*.pl, strassen_mce*.pl
         Various matrix multiplication demonstrations benchmarking

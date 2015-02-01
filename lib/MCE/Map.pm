@@ -16,9 +16,8 @@ use warnings;
 use Scalar::Util qw( looks_like_number );
 
 use MCE;
-use MCE::Util;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -26,8 +25,8 @@ our $VERSION = '1.522';
 ##
 ###############################################################################
 
-our $MAX_WORKERS = 'auto';
-our $CHUNK_SIZE  = 'auto';
+my $MAX_WORKERS = 'auto';
+my $CHUNK_SIZE  = 'auto';
 
 my ($_MCE, $_loaded); my ($_params, $_prev_c); my $_tag = 'MCE::Map';
 
@@ -39,20 +38,31 @@ sub import {
    while (my $_argument = shift) {
       my $_arg = lc $_argument;
 
-      $MAX_WORKERS  = shift and next if ( $_arg eq 'max_workers' );
-      $CHUNK_SIZE   = shift and next if ( $_arg eq 'chunk_size' );
-      $MCE::TMP_DIR = shift and next if ( $_arg eq 'tmp_dir' );
-      $MCE::FREEZE  = shift and next if ( $_arg eq 'freeze' );
-      $MCE::THAW    = shift and next if ( $_arg eq 'thaw' );
+      $MAX_WORKERS = shift and next if ( $_arg eq 'max_workers' );
+      $CHUNK_SIZE  = shift and next if ( $_arg eq 'chunk_size' );
+
+      $MCE::FREEZE = $MCE::MCE->{freeze} = shift and next
+         if ( $_arg eq 'freeze' );
+      $MCE::THAW = $MCE::MCE->{thaw} = shift and next
+         if ( $_arg eq 'thaw' );
 
       if ( $_arg eq 'sereal' ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
             unless ($@) {
-               $MCE::FREEZE = \&encode_sereal;
-               $MCE::THAW   = \&decode_sereal;
+               $MCE::FREEZE = $MCE::MCE->{freeze} = \&encode_sereal;
+               $MCE::THAW = $MCE::MCE->{thaw} = \&decode_sereal;
             }
          }
+         next;
+      }
+
+      if ( $_arg eq 'tmp_dir' ) {
+         $MCE::TMP_DIR = $MCE::MCE->{tmp_dir} = shift;
+         my $_e1 = 'is not a directory or does not exist';
+         my $_e2 = 'is not writeable';
+         _croak("$_tag::import: ($MCE::TMP_DIR) $_e1") unless -d $MCE::TMP_DIR;
+         _croak("$_tag::import: ($MCE::TMP_DIR) $_e2") unless -w $MCE::TMP_DIR;
          next;
       }
 
@@ -67,11 +77,11 @@ sub import {
 
    ## Import functions.
    no strict 'refs'; no warnings 'redefine';
-   my $_package = caller;
+   my $_pkg = caller;
 
-   *{ $_package . '::mce_map_f' } = \&mce_map_f;
-   *{ $_package . '::mce_map_s' } = \&mce_map_s;
-   *{ $_package . '::mce_map'   } = \&mce_map;
+   *{ $_pkg.'::mce_map_f' } = \&run_file;
+   *{ $_pkg.'::mce_map_s' } = \&run_seq;
+   *{ $_pkg.'::mce_map'   } = \&run;
 
    return;
 }
@@ -79,7 +89,7 @@ sub import {
 END {
    return if (defined $_MCE && $_MCE->wid);
 
-   MCE::Map::finish();
+   finish();
 }
 
 ###############################################################################
@@ -108,23 +118,24 @@ sub _gather {
 
 sub init (@) {
 
+   shift if (defined $_[0] && $_[0] eq 'MCE::Map');
+
    if (MCE->wid) {
       @_ = (); _croak(
          "$_tag: function cannot be called by the worker process"
       );
    }
 
-   _croak("$_tag: (argument) is not a HASH reference")
-      unless (ref $_[0] eq 'HASH');
+   finish(); $_params = (ref $_[0] eq 'HASH') ? shift : { @_ };
 
-   MCE::Map::finish(); $_params = shift;
+   @_ = ();
 
    return;
 }
 
 sub finish () {
 
-   if (defined $_MCE) {
+   if (defined $_MCE && $_MCE->{_spawned}) {
       MCE::_save_state; $_MCE->shutdown(); MCE::_restore_state;
    }
 
@@ -139,7 +150,9 @@ sub finish () {
 ##
 ###############################################################################
 
-sub mce_map_f (&@) {
+sub run_file (&@) {
+
+   shift if (defined $_[0] && $_[0] eq 'MCE::Map');
 
    my $_code = shift; my $_file = shift;
 
@@ -166,7 +179,7 @@ sub mce_map_f (&@) {
 
    @_ = ();
 
-   return mce_map($_code);
+   return run($_code);
 }
 
 ###############################################################################
@@ -175,7 +188,9 @@ sub mce_map_f (&@) {
 ##
 ###############################################################################
 
-sub mce_map_s (&@) {
+sub run_seq (&@) {
+
+   shift if (defined $_[0] && $_[0] eq 'MCE::Map');
 
    my $_code = shift;
 
@@ -211,9 +226,11 @@ sub mce_map_s (&@) {
    _croak("$_tag: (end) is not specified for sequence")
       unless (defined $_end);
 
+   $_params->{sequence_run} = 1;
+
    @_ = ();
 
-   return mce_map($_code);
+   return run($_code);
 }
 
 ###############################################################################
@@ -222,7 +239,9 @@ sub mce_map_s (&@) {
 ##
 ###############################################################################
 
-sub mce_map (&@) {
+sub run (&@) {
+
+   shift if (defined $_[0] && $_[0] eq 'MCE::Map');
 
    my $_code = shift;   $_total_chunks = 0; undef %_tmp;
 
@@ -255,10 +274,11 @@ sub mce_map (&@) {
    );
 
    if (defined $_params) {
-      $_input_data = $_params->{input_data} if (exists $_params->{input_data});
-
       if (exists $_params->{_file}) {
-         $_input_data = $_params->{_file}; delete $_params->{_file};
+         $_input_data = delete $_params->{_file};
+      }
+      else {
+         $_input_data = $_params->{input_data} if exists $_params->{input_data};
       }
    }
 
@@ -320,6 +340,7 @@ sub mce_map (&@) {
 
       if (defined $_params) {
          foreach (keys %{ $_params }) {
+            next if ($_ eq 'sequence_run');
             next if ($_ eq 'input_data');
             next if ($_ eq 'chunk_size');
 
@@ -344,21 +365,34 @@ sub mce_map (&@) {
       ? \&_gather : sub { $_cnt += $_[0]; return; };
 
    if (defined $_input_data) {
-      @_ = (); $_MCE->process({ chunk_size => $_chunk_size }, $_input_data);
+      @_ = ();
+      $_MCE->process({ chunk_size => $_chunk_size }, $_input_data);
+      delete $_MCE->{input_data};
    }
    elsif (scalar @_) {
       $_MCE->process({ chunk_size => $_chunk_size }, \@_);
+      delete $_MCE->{input_data};
    }
    else {
       if (defined $_params && exists $_params->{sequence}) {
          $_MCE->run({
             chunk_size => $_chunk_size, sequence => $_params->{sequence}
          }, 0);
+         if (exists $_params->{sequence_run}) {
+            delete $_params->{sequence_run};
+            delete $_params->{sequence};
+         }
          delete $_MCE->{sequence};
       }
    }
 
    MCE::_restore_state;
+
+   if (exists $_MCE->{_rla_return}) {
+      $MCE::MCE->{_rla_return} = delete $_MCE->{_rla_return};
+   }
+
+   finish() if ($^S);   ## shutdown if in eval state
 
    if ($_wantarray) {
       return map { @{ $_ } } delete @_tmp{ 1 .. $_total_chunks };
@@ -385,6 +419,8 @@ sub _validate_number {
 
    my ($_n, $_key) = @_;
 
+   _croak("$_tag: ($_key) is not valid") if (!defined $_n);
+
    $_n =~ s/K\z//i; $_n =~ s/M\z//i;
 
    if (!looks_like_number($_n) || int($_n) != $_n || $_n < 1) {
@@ -410,7 +446,7 @@ MCE::Map - Parallel map model similar to the native map function
 
 =head1 VERSION
 
-This document describes MCE::Map version 1.522
+This document describes MCE::Map version 1.600
 
 =head1 SYNOPSIS
 
@@ -515,7 +551,9 @@ serialization.
 
 =over 3
 
-=item init
+=item MCE::Map->init ( options )
+
+=item MCE::Map::init { options }
 
 The init function accepts a hash of MCE options. The gather option, if
 specified, is ignored due to being used internally by the module.
@@ -564,6 +602,8 @@ specified, is ignored due to being used internally by the module.
 
 =over 3
 
+=item MCE::Map->run ( sub { code }, iterator )
+
 =item mce_map { code } iterator
 
 An iterator reference can by specified for input_data. Iterators are described
@@ -571,12 +611,16 @@ under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
 
    my @a = mce_map { $_ * 2 } make_iterator(10, 30, 2);
 
+=item MCE::Map->run ( sub { code }, list )
+
 =item mce_map { code } list
 
 Input data can be defined using a list.
 
    my @a = mce_map { $_ * 2 } 1..1000;
    my @b = mce_map { $_ * 2 } [ 1..1000 ];
+
+=item MCE::Map->run_file ( sub { code }, file )
 
 =item mce_map_f { code } file
 
@@ -587,7 +631,9 @@ position among themselves without any interaction from the manager process.
    my @d = mce_map_f { chomp; $_ . "\r\n" } $file_handle;
    my @e = mce_map_f { chomp; $_ . "\r\n" } \$scalar;
 
-=item mce_map_s { code } sequence
+=item MCE::Map->run_seq ( sub { code }, $beg, $end [, $step, $fmt ] )
+
+=item mce_map_s { code } $beg, $end [, $step, $fmt ]
 
 Sequence can be defined as a list, an array reference, or a hash reference.
 The functions require both begin and end values to run. Step and format are
@@ -608,7 +654,9 @@ optional. The format is passed to sprintf (% may be omitted below).
 
 =over 3
 
-=item finish
+=item MCE::Map->finish
+
+=item MCE::Map::finish
 
 Workers remain persistent as much as possible after running. Shutdown occurs
 automatically when the script terminates. Call finish when workers are no

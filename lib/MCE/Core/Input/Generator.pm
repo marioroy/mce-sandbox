@@ -15,7 +15,7 @@ package MCE::Core::Input::Generator;
 use strict;
 use warnings;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ## Items below are folded into MCE.
 
@@ -24,7 +24,8 @@ package MCE;
 ## Warnings are disabled to minimize bits of noise when user or OS signals
 ## the script to exit. e.g. MCE_script.pl < infile | head
 
-no warnings 'threads'; no warnings 'uninitialized';
+no warnings 'threads';
+no warnings 'uninitialized';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -34,7 +35,7 @@ no warnings 'threads'; no warnings 'uninitialized';
 
 sub _worker_sequence_generator {
 
-   my $self = $_[0];
+   my ($self) = @_;
 
    @_ = ();
 
@@ -68,6 +69,8 @@ sub _worker_sequence_generator {
 
    ## -------------------------------------------------------------------------
 
+   local $_;
+
    $self->{_last_jmp} = sub { goto _WORKER_SEQ_GEN__LAST; };
 
    if ($_begin == $_end) {                        ## Identical, yes.
@@ -75,7 +78,7 @@ sub _worker_sequence_generator {
       if ($_wid == 1) {
          $self->{_next_jmp} = sub { goto _WORKER_SEQ_GEN__LAST; };
 
-         local $_ = (defined $_fmt) ? sprintf("%$_fmt", $_next) : $_next;
+         $_ = (defined $_fmt) ? sprintf("%$_fmt", $_next) : $_next;
 
          if ($_chunk_size > 1) {
             $_ = ($_bounds_only) ? [ $_, $_ ] : [ $_ ];
@@ -94,7 +97,7 @@ sub _worker_sequence_generator {
          return if ( $_flag && $_next > $_end);
          return if (!$_flag && $_next < $_end);
 
-         local $_ = (defined $_fmt) ? sprintf("%$_fmt", $_next) : $_next;
+         $_ = (defined $_fmt) ? sprintf("%$_fmt", $_next) : $_next;
          $_wuf->($self, $_, $_chunk_id);
 
          _WORKER_SEQ_GEN__NEXT_A:
@@ -108,7 +111,7 @@ sub _worker_sequence_generator {
       $self->{_next_jmp} = sub { goto _WORKER_SEQ_GEN__NEXT_B; };
 
       while (1) {
-         my $_n_begin = $_next; my @_n = ();
+         my @_n = (); my $_n_begin = $_next;
 
          ## -------------------------------------------------------------------
 
@@ -197,7 +200,7 @@ sub _worker_sequence_generator {
 
          ## -------------------------------------------------------------------
 
-         local $_ = \@_n;
+         $_ = \@_n;
          $_wuf->($self, \@_n, $_chunk_id);
 
          _WORKER_SEQ_GEN__NEXT_B:

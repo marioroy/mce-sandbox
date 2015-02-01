@@ -14,7 +14,7 @@ use warnings;
 
 use MCE;
 
-our $VERSION = '1.522';
+our $VERSION = '1.600';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -65,6 +65,7 @@ sub mce_forchunk    (@) { return $MCE::MCE->forchunk(@_); }
 sub mce_foreach     (@) { return $MCE::MCE->foreach(@_); }
 sub mce_forseq      (@) { return $MCE::MCE->forseq(@_); }
 sub mce_process     (@) { return $MCE::MCE->process(@_); }
+sub mce_relay_final ( ) { return $MCE::MCE->relay_final(); }
 sub mce_run         (@) { return $MCE::MCE->run(@_); }
 sub mce_send        (@) { return $MCE::MCE->send(@_); }
 sub mce_shutdown    ( ) { return $MCE::MCE->shutdown(); }
@@ -78,6 +79,8 @@ sub mce_exit        (@) { return $MCE::MCE->exit(@_); }
 sub mce_gather      (@) { return $MCE::MCE->gather(@_); }
 sub mce_last        ( ) { return $MCE::MCE->last(); }
 sub mce_next        ( ) { return $MCE::MCE->next(); }
+sub mce_relay      (;&) { return $MCE::MCE->relay(@_); }
+sub mce_relay_recv  ( ) { return $MCE::MCE->relay_recv(); }
 sub mce_sendto    (;*@) { return $MCE::MCE->sendto(@_); }
 sub mce_sync        ( ) { return $MCE::MCE->sync(); }
 sub mce_yield       ( ) { return $MCE::MCE->yield(); }
@@ -130,6 +133,7 @@ sub _export_subs {
       *{ $_package . '::mce_foreach'     } = \&mce_foreach;
       *{ $_package . '::mce_forseq'      } = \&mce_forseq;
       *{ $_package . '::mce_process'     } = \&mce_process;
+      *{ $_package . '::mce_relay_final' } = \&mce_relay_final;
       *{ $_package . '::mce_run'         } = \&mce_run;
       *{ $_package . '::mce_send'        } = \&mce_send;
       *{ $_package . '::mce_shutdown'    } = \&mce_shutdown;
@@ -145,6 +149,8 @@ sub _export_subs {
       *{ $_package . '::mce_gather'      } = \&mce_gather;
       *{ $_package . '::mce_last'        } = \&mce_last;
       *{ $_package . '::mce_next'        } = \&mce_next;
+      *{ $_package . '::mce_relay'       } = \&mce_relay;
+      *{ $_package . '::mce_relay_recv'  } = \&mce_relay_recv;
       *{ $_package . '::mce_sendto'      } = \&mce_sendto;
       *{ $_package . '::mce_sync'        } = \&mce_sync;
       *{ $_package . '::mce_yield'       } = \&mce_yield;
@@ -160,8 +166,6 @@ sub _export_subs {
       *{ $_package . '::mce_say'         } = \&mce_say;
       *{ $_package . '::mce_thaw'        } = \&mce_thaw;
    }
-
-   ## Callable by both the manager and worker processes.
 
    if ($_g_flg) {
       *{ $_package . '::mce_chunk_id'    } = \&mce_chunk_id;
@@ -195,7 +199,7 @@ MCE::Subs - Exports functions mapped directly to MCE methods
 
 =head1 VERSION
 
-This document describes MCE::Subs version 1.522
+This document describes MCE::Subs version 1.600
 
 =head1 SYNOPSIS
 
@@ -280,6 +284,8 @@ MCE methods are described in L<MCE::Core|MCE::Core>.
 
 =item mce_process
 
+=item mce_relay_final
+
 =item mce_restart_worker
 
 =item mce_run
@@ -325,6 +331,10 @@ MCE methods are described in L<MCE::Core|MCE::Core>.
 =item mce_print
 
 =item mce_printf
+
+=item mce_relay
+
+=item mce_relay_recv
 
 =item mce_say
 
