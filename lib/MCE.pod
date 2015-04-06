@@ -5,7 +5,7 @@ MCE - Many-Core Engine for Perl providing parallel processing capabilities
 
 =head1 VERSION
 
-This document describes MCE version 1.600
+This document describes MCE version 1.605
 
 =head1 DESCRIPTION
 
@@ -38,9 +38,9 @@ Utility functions for Many-Core Engine.
 
 =back
 
-=head1 MCE ADDONS
+=head1 MCE EXTRAS
 
-There are 3 addon modules.
+There are 3 add-on modules.
 
 =over 3
 
@@ -55,18 +55,18 @@ priority queues from a single module. MCE::Queue exchanges data via the core
 engine to enable queueing to work for both children (spawned from fork) and
 threads.
 
-=item L<MCE::Subs|MCE::Subs>
+=item L<MCE::Relay|MCE::Relay>
 
-Exports functions mapped directly to MCE methods; e.g. mce_wid. The module
-allows 3 options; :manager, :worker, and :getter.
+Enables workers to receive and pass on information orderly with zero
+involvement by the manager process while running.
 
 =back
 
 =head1 MCE MODELS
 
-MCE 1.5 includes 6 models. The models take Many-Core Engine to a new level
-for ease of use. Two options (chunk_size and max_workers) are configured
-automatically as well as spawning and shutdown.
+The models take Many-Core Engine to a new level for ease of use. Two options
+(chunk_size and max_workers) are configured automatically as well as spawning
+and shutdown.
 
 =over 3
 
@@ -105,15 +105,26 @@ to syntax from MCE::Map and MCE::Grep.
 
 =back
 
-=head1 EXAMPLES
+=head1 MISCELLANEOUS
 
-A placeholder for the examples included with the distribution.
+Miscellaneous additions included with the distribution.
 
 =over 3
 
+=item L<MCE::Candy|MCE::Candy>
+
+Provides a collection of sugar methods and output iterators for preserving
+output order.
+
 =item L<MCE::Examples|MCE::Examples>
 
-Describes various demonstations for MCE including a Monte Carlo simulation.
+A placeholder for the examples included with the distribution. Describes
+various demonstrations for MCE including a Monte Carlo simulation.
+
+=item L<MCE::Subs|MCE::Subs>
+
+Exports functions mapped directly to MCE methods; e.g. mce_wid. The module
+allows 3 options; :manager, :worker, and :getter.
 
 =back
 
@@ -133,9 +144,7 @@ Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
 
 Copyright (C) 2012-2015 by Mario E. Roy
 
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
+MCE is released under the same license as Perl.
 
 See L<http://dev.perl.org/licenses/> for more information.
 

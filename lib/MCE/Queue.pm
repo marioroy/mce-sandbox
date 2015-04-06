@@ -12,12 +12,16 @@ use warnings;
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
 
+no warnings 'threads';
+no warnings 'recursion';
+no warnings 'uninitialized';
+
 use Fcntl qw( :flock O_RDONLY );
-use Socket qw( :crlf PF_UNIX PF_UNSPEC SOCK_STREAM );
 use Scalar::Util qw( looks_like_number );
+use MCE::Util qw( $LF );
 use bytes;
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -27,10 +31,7 @@ our $VERSION = '1.600';
 
 our ($HIGHEST, $LOWEST, $FIFO, $LIFO, $LILO, $FILO) = (1, 0, 1, 0, 1, 0);
 
-my $PORDER = $HIGHEST;
-my $TYPE   = $FIFO;
-my $FAST   = 0;
-
+my ($FAST, $PORDER, $TYPE) = (0, $HIGHEST, $FIFO);
 my $_loaded;
 
 sub import {
@@ -41,6 +42,11 @@ sub import {
    while (my $_argument = shift) {
       my $_arg = lc $_argument;
 
+      if ( $_arg eq 'fast' ) {
+         _croak('MCE::Queue::import: (FAST) must be 1 or 0')
+            if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
+         $FAST = shift ; next;
+      }
       if ( $_arg eq 'porder' ) {
          _croak('MCE::Queue::import: (PORDER) must be 1 or 0')
             if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
@@ -50,11 +56,6 @@ sub import {
          _croak('MCE::Queue::import: (TYPE) must be 1 or 0')
             if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
          $TYPE = shift ; next;
-      }
-      if ( $_arg eq 'fast' ) {
-         _croak('MCE::Queue::import: (FAST) must be 1 or 0')
-            if (!defined $_[0] || ($_[0] ne '1' && $_[0] ne '0'));
-         $FAST = shift ; next;
       }
 
       _croak("MCE::Queue::import: ($_argument) is not a valid module argument");
@@ -119,10 +120,10 @@ use constant {
 };
 
 ## ** Attributes used internally and listed here.
-## _datp _datq _heap _id _nb_flag _qr_sock _qw_sock _standalone _porder _type
+## _qr_sock _qw_sock _datp _datq _heap _id _nb_flag _porder _type _standalone
 
 my %_valid_fields_new = map { $_ => 1 } qw(
-   gather porder queue type fast
+   fast gather porder queue type
 );
 
 my $_all = {};
@@ -132,20 +133,15 @@ sub DESTROY {
 
    my ($_Q) = @_;
 
-   undef $_Q->{_datp}; undef $_Q->{_datq}; undef $_Q->{_heap};
    delete $_all->{ $_Q->{_id} } if (exists $_Q->{_id});
+   undef  $_Q->{_datp};
+   undef  $_Q->{_datq};
+   undef  $_Q->{_heap};
 
-   return if (defined $MCE::MCE && $MCE::MCE->wid);
+   return if (defined $MCE::VERSION && !defined $MCE::MCE->{_wid});
+   return if (defined $MCE::MCE && $MCE::MCE->{_wid});
 
-   if (defined $_Q->{_qr_sock}) {
-      local ($!, $?);
-
-      CORE::shutdown $_Q->{_qw_sock}, 2;
-      CORE::shutdown $_Q->{_qr_sock}, 2;
-
-      close $_Q->{_qw_sock}; undef $_Q->{_qw_sock};
-      close $_Q->{_qr_sock}; undef $_Q->{_qr_sock};
-   }
+   MCE::Util::_destroy_sockets($_Q, qw(_aw_sock _ar_sock _qw_sock _qr_sock));
 
    return;
 }
@@ -164,30 +160,30 @@ sub new {
 
    my $_Q = {}; bless($_Q, ref($_class) || $_class);
 
-   for (keys %_argv) {
-      _croak("MCE::Queue::new: ($_) is not a valid constructor argument")
-         unless (exists $_valid_fields_new{$_});
+   for my $_p (keys %_argv) {
+      _croak("MCE::Queue::new: ($_p) is not a valid constructor argument")
+         unless (exists $_valid_fields_new{$_p});
    }
 
    $_Q->{_datp} = {};  ## Priority data { p1 => [ ], p2 => [ ], pN => [ ] }
    $_Q->{_heap} = [];  ## Priority heap [ pN, p2, p1 ] ## in heap order
                        ## fyi, _datp will always dequeue before _datq
 
+   $_Q->{_fast} = (exists $_argv{fast} && defined $_argv{fast})
+      ? $_argv{fast} : $FAST;
    $_Q->{_porder} = (exists $_argv{porder} && defined $_argv{porder})
       ? $_argv{porder} : $PORDER;
    $_Q->{_type} = (exists $_argv{type} && defined $_argv{type})
       ? $_argv{type} : $TYPE;
-   $_Q->{_fast} = (exists $_argv{fast} && defined $_argv{fast})
-      ? $_argv{fast} : $FAST;
 
    ## -------------------------------------------------------------------------
 
+   _croak('MCE::Queue::new: (fast) must be 1 or 0')
+      if ($_Q->{_fast} ne '1' && $_Q->{_fast} ne '0');
    _croak('MCE::Queue::new: (porder) must be 1 or 0')
       if ($_Q->{_porder} ne '1' && $_Q->{_porder} ne '0');
    _croak('MCE::Queue::new: (type) must be 1 or 0')
       if ($_Q->{_type} ne '1' && $_Q->{_type} ne '0');
-   _croak('MCE::Queue::new: (fast) must be 1 or 0')
-      if ($_Q->{_fast} ne '1' && $_Q->{_fast} ne '0');
 
    if (exists $_argv{queue}) {
       _croak('MCE::Queue::new: (queue) is not an ARRAY reference')
@@ -208,18 +204,9 @@ sub new {
    if (defined $MCE::VERSION) {
       if (MCE->wid == 0) {
          $_Q->{_id} = ++$_qid; $_all->{$_qid} = $_Q;
-         $_Q->{_desem} = 0 if ($_Q->{_fast});
+         $_Q->{_dsem} = 0 if ($_Q->{_fast});
 
-         socketpair( $_Q->{_qr_sock}, $_Q->{_qw_sock},
-            PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
-
-         binmode $_Q->{_qr_sock};
-         binmode $_Q->{_qw_sock};
-
-         my $_old_hndl = select $_Q->{_qr_sock}; $| = 1;
-                         select $_Q->{_qw_sock}; $| = 1;
-
-         select $_old_hndl;
+         MCE::Util::_make_socket_pair($_Q, qw(_qr_sock _qw_sock));
 
          syswrite $_Q->{_qw_sock}, $LF
             if (exists $_argv{queue} && scalar @{ $_argv{queue} });
@@ -341,7 +328,10 @@ sub _pending {
 
    my $_pending = 0; my ($_Q) = @_;
 
-   $_pending += @{ $_Q->{_datp}->{$_} } for (@{ $_Q->{_heap} });
+   for my $_h (@{ $_Q->{_heap} }) {
+      $_pending += @{ $_Q->{_datp}->{$_h} };
+   }
+
    $_pending += @{ $_Q->{_datq} };
 
    return $_pending;
@@ -523,8 +513,6 @@ sub _croak {
    } else {
       goto &MCE::_croak;
    }
-
-   return;
 }
 
 ## Helper method for getting the reference to the underlying array.
@@ -534,7 +522,8 @@ sub _get_aref {
 
    my ($_Q, $_p) = @_;
 
-   return if (defined $MCE::MCE && $MCE::MCE->wid);
+   return if (defined $MCE::VERSION && !defined $MCE::MCE->{_wid});
+   return if (defined $MCE::MCE && $MCE::MCE->{_wid});
 
    if (defined $_p) {
       _croak('MCE::Queue::_get_aref: (priority) is not an integer')
@@ -632,7 +621,7 @@ sub _heap_insert_high {
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## Output routines for the MCE manager process.
+## Output routines for the manager process.
 ##
 ###############################################################################
 
@@ -811,17 +800,17 @@ sub _heap_insert_high {
 
          if ($_Q->{_fast}) {
             ## The 'fast' option may reduce wait time, thus run faster
-            if ($_Q->{_desem} <= 1) {
+            if ($_Q->{_dsem} <= 1) {
                $_pending = $_Q->_pending();
                $_pending = int($_pending / $_cnt) if ($_cnt);
                if ($_pending) {
                   $_pending = MAX_DQ_DEPTH if ($_pending > MAX_DQ_DEPTH);
                   syswrite $_Q->{_qw_sock}, $LF for (1 .. $_pending);
                }
-               $_Q->{_desem}  = $_pending;
+               $_Q->{_dsem}  = $_pending;
             }
             else {
-               $_Q->{_desem} -= 1;
+               $_Q->{_dsem} -= 1;
             }
          }
          else {
@@ -1089,7 +1078,7 @@ sub _heap_insert_high {
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## Wrapper methods for the MCE manager process.
+## Wrapper methods for the manager process.
 ##
 ###############################################################################
 
@@ -1145,7 +1134,7 @@ sub _mce_m_dequeue {
    my ($_Q, $_cnt) = @_;
    my (@_items, $_buf, $_next, $_pending);
 
-   sysread $_Q->{_qr_sock}, $_next, 1;        ## Wait here
+   sysread $_Q->{_qr_sock}, $_next, 1;        ## Block here
 
    if (defined $_cnt && $_cnt ne '1') {
       @_items = $_Q->_dequeue($_cnt);
@@ -1155,17 +1144,17 @@ sub _mce_m_dequeue {
 
    if ($_Q->{_fast}) {
       ## The 'fast' option may reduce wait time, thus run faster
-      if ($_Q->{_desem} <= 1) {
+      if ($_Q->{_dsem} <= 1) {
          $_pending = $_Q->_pending();
          $_pending = int($_pending / $_cnt) if (defined $_cnt);
          if ($_pending) {
             $_pending = MAX_DQ_DEPTH if ($_pending > MAX_DQ_DEPTH);
             syswrite $_Q->{_qw_sock}, $LF for (1 .. $_pending);
          }
-         $_Q->{_desem}  = $_pending;
+         $_Q->{_dsem}  = $_pending;
       }
       else {
-         $_Q->{_desem} -= 1;
+         $_Q->{_dsem} -= 1;
       }
    }
    else {
@@ -1234,7 +1223,7 @@ sub _mce_m_insertp {
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## Wrapper methods for the MCE worker process.
+## Wrapper methods for the worker process.
 ##
 ###############################################################################
 
@@ -1252,10 +1241,10 @@ sub _mce_m_insertp {
       $_DAU_W_SOCK = $_MCE->{_dat_w_sock}->[$_chn];
       $_lock_chn   = $_MCE->{_lock_chn};
 
-      for (keys %{ $_all }) {
-         undef $_all->{$_}->{_datp}; delete $_all->{$_}->{_datp};
-         undef $_all->{$_}->{_datq}; delete $_all->{$_}->{_datq};
-         undef $_all->{$_}->{_heap}; delete $_all->{$_}->{_heap};
+      for my $_p (keys %{ $_all }) {
+         undef $_all->{$_p}->{_datp}; delete $_all->{$_p}->{_datp};
+         undef $_all->{$_p}->{_datq}; delete $_all->{$_p}->{_datq};
+         undef $_all->{$_p}->{_heap}; delete $_all->{$_p}->{_heap};
       }
 
       no strict 'refs'; no warnings 'redefine';
@@ -1390,7 +1379,7 @@ sub _mce_m_insertp {
          local $\ = undef if (defined $\);
          local $/ = $LF if (!$/ || $/ ne $LF);
 
-         sysread $_Q->{_qr_sock}, $_next, 1;  ## Wait here
+         sysread $_Q->{_qr_sock}, $_next, 1;  ## Block here
 
          flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
          print {$_DAT_W_SOCK} OUTPUT_D_QUE . $LF . $_chn . $LF;
@@ -1679,7 +1668,7 @@ MCE::Queue - Hybrid (normal and priority) queues for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.600
+This document describes MCE::Queue version 1.605
 
 =head1 SYNOPSIS
 
@@ -1813,9 +1802,7 @@ Hence, MCE is not required to use MCE::Queue.
 
 =head1 API DOCUMENTATION
 
-=over 3
-
-=item ->new ( [ queue => \@array ] )
+=head2 MCE::Queue->new ( [ queue => \@array, fast => 1 ] )
 
 This creates a new queue. Available options are queue, porder, type, fast, and
 gather. The gather option is mainly for running with MCE and wanting to pass
@@ -1892,7 +1879,7 @@ of the gather option in the context of a queue.
 
    print "@squares\n";
 
-=item ->clear ( void )
+=head2 $q->clear ( void )
 
 Clears the queue of any items. This has the effect of nulling the queue and
 the socket used for blocking.
@@ -1902,15 +1889,15 @@ the socket used for blocking.
    @a = ();     ## bad, the blocking socket may become out of sync
    $q->clear;   ## ok
 
-=item ->enqueue ( $item [, $item, ... ] )
+=head2 $q->enqueue ( $item [, $item, ... ] )
 
 Appends a list of items onto the end of the normal queue.
 
-=item ->enqueuep ( $p, $item [, $item, ... ] )
+=head2 $q->enqueuep ( $p, $item [, $item, ... ] )
 
 Appends a list of items onto the end of the priority queue with priority.
 
-=item ->dequeue ( [ $count ] )
+=head2 $q->dequeue ( [ $count ] )
 
 Returns the requested number of items (default 1) from the queue. Priority
 data will always dequeue first before any data from the normal queue.
@@ -1924,13 +1911,13 @@ are passing parameters through the queue. For this reason, always remember to
 dequeue using the same multiple for the count. This is unlike Thread::Queue
 which will block until the requested number of items are available.
 
-=item ->dequeue_nb ( [ $count ] )
+=head2 $q->dequeue_nb ( [ $count ] )
 
 Returns the requested number of items (default 1) from the queue. Like with
 dequeue, priority data will always dequeue first. This method is non-blocking
 and will return undef in the absence of data from the queue.
 
-=item ->insert ( $index, $item [, $item, ... ] )
+=head2 $q->insert ( $index, $item [, $item, ... ] )
 
 Adds the list of items to the queue at the specified index position (0 is the
 head of the list). The head of the queue is that item which would be removed
@@ -1946,12 +1933,12 @@ by a call to dequeue.
    $q->insert(1, 'foo', 'bar'); 
    # Queue now contains: 1, 2, 3, 'foo', 'bar', 4
 
-=item ->insertp ( $p, $index, $item [, $item, ... ] )
+=head2 $q->insertp ( $p, $index, $item [, $item, ... ] )
 
 Adds the list of items to the queue at the specified index position with
 priority. The behavior is similarly to insert otherwise.
 
-=item ->pending ( void )
+=head2 $q->pending ( void )
 
 Returns the number of items in the queue. The count includes both normal
 and priority data.
@@ -1963,7 +1950,7 @@ and priority data.
    print $q->pending(), "\n";
    # Output: 4
 
-=item ->peek ( [ $index ] )
+=head2 $q->peek ( [ $index ] )
 
 Returns an item from the normal queue, at the specified index, without
 dequeuing anything. It defaults to the head of the queue if index is not
@@ -1982,13 +1969,13 @@ call to dequeue. Negative index values are supported, similarly to arrays.
    print $q->peek(1), ' ', $q->peek(-2), "\n";
    # Output: 4 2
 
-=item ->peekp ( $p [, $index ] )
+=head2 $q->peekp ( $p [, $index ] )
 
 Returns an item from the queue with priority, at the specified index, without
 dequeuing anything. It defaults to the head of the queue if index is not
 specified. The behavior is similarly to peek otherwise.
 
-=item ->peekh ( [ $index ] )
+=head2 $q->peekh ( [ $index ] )
 
 Returns an item from the heap, at the specified index.
 
@@ -2008,7 +1995,7 @@ Returns an item from the heap, at the specified index.
    print $q->peekh(0), "\n";
    # Output: 4
 
-=item ->heap ( void )
+=head2 $q->heap ( void )
 
 Returns an array containing the heap data. Heap data consists of priority
 numbers, not the data.
@@ -2018,8 +2005,6 @@ numbers, not the data.
    
    @h = $q->heap;   # $MCE::Queue::LOWEST
    # Heap contains: 4, 5, 6
-
-=back
 
 =head1 ACKNOWLEDGEMENTS
 
@@ -2068,14 +2053,6 @@ L<MCE|MCE>
 =head1 AUTHOR
 
 Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
-
-=head1 LICENSE
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

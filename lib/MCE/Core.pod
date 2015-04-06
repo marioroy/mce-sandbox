@@ -5,7 +5,7 @@ MCE::Core - Documentation describing the Core API for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Core version 1.600
+This document describes MCE::Core version 1.605
 
 =head1 SYNOPSIS
 
@@ -42,7 +42,7 @@ This is a simplistic use case of MCE running with 5 workers.
    Hello from 1
    Hello from 3
 
-=head2 ->new ( [ options ] )
+=head2 MCE->new ( [ options ] )
 
 Below, a new instance is configured with all available options.
 
@@ -110,8 +110,13 @@ Below, a new instance is configured with all available options.
 
       init_relay => 0,                    ## Default undef
 
-         # For specifying the initial relay value. Used with the
-         # relay method for receiving and passing on information.
+         # For specifying the initial relay value. Allowed values
+         # are array_ref, hash_ref, or scalar. The MCE::Relay module
+         # is loaded automatically when specified.
+
+         # init_relay => \@array,
+         # init_relay => \%hash,
+         # init_relay => scalar,
 
       input_data => $input_file,          ## Default undef
       RS         => "\n>",                ## Default undef
@@ -1145,9 +1150,7 @@ same as $_, due to chunk_size being greater than 1.
 
 The methods listed below are callable by the main process and workers.
 
-=over 3
-
-=item ->abort ( void )
+=head2 $mce->abort ( void )
 
 The 'abort' method is applicable when processing input_data only. This
 causes all workers to abort after processing the current chunk.
@@ -1160,7 +1163,7 @@ the end of input_data has been reached and leave the chunking loop.
    $mce->abort;
    MCE->abort;
 
-=item ->chunk_id ( void )
+=head2 $mce->chunk_id ( void )
 
 Returns the chunk_id for the current chunk. The value starts at 1. Chunking
 applies to input_data or sequence. The value is 0 for the manager process.
@@ -1168,14 +1171,14 @@ applies to input_data or sequence. The value is 0 for the manager process.
    my $chunk_id = $mce->chunk_id;
    my $chunk_id = MCE->chunk_id;
 
-=item ->chunk_size ( void )
+=head2 $mce->chunk_size ( void )
 
 Returns the chunk_size used by MCE.
 
    my $chunk_size = $mce->chunk_size;
    my $chunk_size = MCE->chunk_size;
 
-=item ->freeze ( $object_ref )
+=head2 $mce->freeze ( $object_ref )
 
 Calls the internal freeze method to serialize an object. The default
 serialization routines are handled by Storable. Both freeze and thaw
@@ -1184,14 +1187,21 @@ can be overridden when including MCE.
    my $frozen = $mce->freeze([ 0, 2, 4 ]);
    my $frozen = MCE->freeze([ 0, 2, 4 ]);
 
-=item ->max_workers ( void )
+=head2 $mce->max_workers ( void )
 
 Returns the value for max_workers used by MCE.
 
    my $max_workers = $mce->max_workers;
    my $max_workers = MCE->max_workers;
 
-=item ->sess_dir ( void )
+=head2 $mce->pid ( void )
+
+Returns the Process ID. Threads have thread ID attached to the value.
+
+   my $pid = $mce->pid;   ## 16180 (pid) ; 16180.2 (pid.tid)
+   my $pid = MCE->pid;
+
+=head2 $mce->sess_dir ( void )
 
 Returns the session directory used by the MCE instance. This is defined
 during spawning and removed during shutdown.
@@ -1199,14 +1209,14 @@ during spawning and removed during shutdown.
    my $sess_dir = $mce->sess_dir;
    my $sess_dir = MCE->sess_dir;
 
-=item ->task_id ( void )
+=head2 $mce->task_id ( void )
 
 Returns the task ID. This applies to the user_tasks option (starts at 0).
 
    my $task_id = $mce->task_id;
    my $task_id = MCE->task_id;
 
-=item ->task_name ( void )
+=head2 $mce->task_name ( void )
 
 Returns the task_name value specified via the task_name option when
 configuring MCE.
@@ -1214,7 +1224,7 @@ configuring MCE.
    my $task_name = $mce->task_name;
    my $task_name = MCE->task_name;
 
-=item ->task_wid ( void )
+=head2 $mce->task_wid ( void )
 
 Returns the task worker ID (applies to user_tasks). The value starts at 1 per
 each task configured within user_tasks. The value is 0 for the manager process.
@@ -1222,28 +1232,28 @@ each task configured within user_tasks. The value is 0 for the manager process.
    my $task_wid = $mce->task_wid;
    my $task_wid = MCE->task_wid;
 
-=item ->thaw ( $frozen )
+=head2 $mce->thaw ( $frozen )
 
 Calls the internal thaw method to un-serialize the frozen object.
 
    my $object_ref = $mce->thaw($frozen);
    my $object_ref = MCE->thaw($frozen);
 
-=item ->tmp_dir ( void )
+=head2 $mce->tmp_dir ( void )
 
 Returns the temporary directory used by MCE.
 
    my $tmp_dir = $mce->tmp_dir;
    my $tmp_dir = MCE->tmp_dir;
 
-=item ->user_args ( void )
+=head2 $mce->user_args ( void )
 
 Returns the arguments specified via the user_args option.
 
    my ($arg1, $arg2, $arg3) = $mce->user_args;
    my ($arg1, $arg2, $arg3) = MCE->user_args;
 
-=item ->wid ( void )
+=head2 $mce->wid ( void )
 
 Returns the MCE worker ID. Starts at 1 per each MCE instance. The value is
 0 for the manager process.
@@ -1251,116 +1261,21 @@ Returns the MCE worker ID. Starts at 1 per each MCE instance. The value is
    my $wid = $mce->wid;
    my $wid = MCE->wid;
 
-=back
-
 =head1 METHODS for the MANAGER PROCESS only
 
 Methods listed below are callable by the main process only.
 
-=over 3
+=head2 $mce->forchunk ( $input_data [, { options } ], sub { ... } )
 
-=item ->forchunk ( $input_data [, { options } ], sub { ... } )
+=head2 $mce->foreach ( $input_data [, { options } ], sub { ... } )
 
-Forchunk, foreach, and forseq are sugar methods in MCE. Workers are
-automatically spawned, the code block is executed in parallel, and shutdown
-is called. Do not use these methods if workers must persist afterwards.
+=head2 $mce->forseq ( $sequence_spec [, { options } ], sub { ... } )
 
-Specifying options is optional. Valid options are the same as for the
-process method.
+Forchunk, foreach, and forseq are sugar methods and described in
+L<MCE::Candy|MCE::Candy>. Stubs exist in MCE which load MCE::Candy
+automatically.
 
-   ## Declare a MCE instance.
-
-   my $mce = MCE->new(
-      chunk_size  => 20,
-      max_workers => $max_workers
-   );
-
-   ## Arguments inside the code block are the same as for user_func.
-
-   $mce->forchunk(\@input_data, sub {
-      my ($mce, $chunk_ref, $chunk_id) = @_;
-
-      foreach ( @{ $chunk_ref } ) {
-         MCE->print("$chunk_id: $_\n");
-      }
-   });
-
-   ## Passing chunk_size as an option.
-
-   $mce->forchunk(\@input_data, { chunk_size => 30 }, sub {
-      ...
-   });
-
-=item ->foreach ( $input_data [, { options } ], sub { ... } )
-
-Foreach implies chunk_size => 1 and cannot be overwritten. Arguments inside
-the code block are the same as for user_func. This is true even if chunk_size
-is set to 1. MCE is both a chunking engine plus a parallel engine all in one.
-Arguments within the block are the same whether calling foreach or forchunk.
-
-   my $mce = MCE->new(
-      max_workers => $max_workers
-   );
-
-   $mce->foreach(\@input_data, sub {
-      my ($mce, $chunk_ref, $chunk_id) = @_;
-      my $row = $chunk_ref->[0];
-      MCE->print("$chunk_id: $row\n");
-   });
-
-Below, passing an anonymous array as input data. For example, wanting to
-parallelize a serial loop with MCE.
-
-   ## Serial loops.
-
-   for (my $i = 0; $i < $max; $i++) {
-      ...  ## Runs serially
-   }
-
-   for my $i (0 .. $max - 1) {
-      ...  ## Runs serially
-   }
-
-   ## Parallel loop via MCE.
-
-   $mce->foreach([ (0 .. $max - 1) ], sub {
-      my ($mce, $chunk_ref, $chunk_id) = @_;
-      my $i = $chunk_ref->[0];
-      ...  ## Runs in parallel
-   });
-
-=item ->forseq ( $sequence_spec [, { options } ], sub { ... } )
-
-Sequence can be defined using an array or hash reference.
-
-   my $mce = MCE->new(
-      max_workers => 3
-   );
-
-   $mce->forseq([ 20, 40 ], sub {
-      my ($mce, $n, $chunk_id) = @_;
-      my $result = `ping 192.168.1.${n}`;
-      ...
-   });
-
-   $mce->forseq({ begin => 15, end => 10, step => -1 }, sub {
-      my ($mce, $n, $chunk_id) = @_;
-      print $n, " from ", MCE->wid, "\n";
-   });
-
-MCE 1.415 allows chunk_size > 1. $n_seq is a reference pointing to an array of
-sequences below. Chunking reduces IPC overhead behind the scene. Chunk size
-is 1 when not specified.
-
-   $mce->forseq([ 20, 80 ], { chunk_size => 10 }, sub {
-      my ($mce, $n_seq, $chunk_id) = @_;
-      for my $n ( @{ $n_seq } ) {
-         my $result = `ping 192.168.1.${n}`;
-         ...
-      }
-   });
-
-=item ->process ( $input_data [, { options } ] )
+=head2 $mce->process ( $input_data [, { options } ] )
 
 The process method will spawn workers automatically if not already spawned.
 It will set input_data => $input_data. It calls run(0) to not auto-shutdown
@@ -1418,38 +1333,7 @@ Do the following if wanting workers to persist between jobs.
 
    $mce->shutdown;
 
-=item ->relay_final ( void )
-
-Call this method to obtain the final relay values after running. See included
-example findnull.pl for another use case.
-
-   use MCE max_workers => 4;
-
-   my $mce = MCE->new(
-      init_relay => [ 0, 100 ],       ## initial values (two counters)
-
-      user_func => sub {
-         my ($mce) = @_;
-
-         ## do work
-         my ($acc1, $acc2) = (10, 20);
-
-         ## relay to next worker
-         MCE::relay { $_->[0] += $acc1; $_->[1] += $acc2 };
-
-         return;
-      }
-   )->run;
-
-   my ($cnt1, $cnt2) = $mce->relay_final;
-
-   print "$cnt1 : $cnt2\n";
-
-   -- Output
-
-   40 : 180
-
-=item ->restart_worker ( void )
+=head2 $mce->restart_worker ( void )
 
 One can restart a worker who has died or exited. The job never ends below
 due to restarting each time. Recommended is to call MCE->exit or $mce->exit
@@ -1521,7 +1405,7 @@ Press [ctrl-c] to terminate the script.
 
    ...
 
-=item ->run ( [ $auto_shutdown [, { options } ] ] )
+=head2 $mce->run ( [ $auto_shutdown [, { options } ] ] )
 
 The run method, by default, spawns workers, processes once, and shuts down
 afterwards. Specify 0 for $auto_shutdown when wanting workers to persist
@@ -1535,7 +1419,7 @@ process method.
    ## Disables auto-shutdown
    $mce->run(0);
 
-=item ->send ( $data_ref )
+=head2 $mce->send ( $data_ref )
 
 The 'send' method is useful when wanting to spawn workers early to minimize
 memory consumption and afterwards send data individually to each worker. One
@@ -1580,7 +1464,7 @@ will receive data first. It depends on which worker is available awaiting data.
    3: Hello from Francis
    4: Hello from Padre
 
-=item ->shutdown ( void )
+=head2 $mce->shutdown ( void )
 
 The run method will automatically spawn workers, run once, and shutdown workers
 automatically. Workers persist after running below. Shutdown may be called as
@@ -1602,7 +1486,7 @@ needed or prior to exiting.
 
    $mce->shutdown;
 
-=item ->spawn ( void )
+=head2 $mce->spawn ( void )
 
 Workers are normally spawned automatically. The spawn method allows one to
 spawn workers early if so desired.
@@ -1611,7 +1495,7 @@ spawn workers early if so desired.
 
    $mce->spawn;
 
-=item ->status ( void )
+=head2 $mce->status ( void )
 
 The greatest exit status is saved among workers while running. Look at
 the on_post_exit or on_post_run options for callback support.
@@ -1622,15 +1506,11 @@ the on_post_exit or on_post_run options for callback support.
 
    my $exit_status = $mce->status;
 
-=back
-
 =head1 METHODS for WORKERS only
 
 Methods listed below are callable by workers only.
 
-=over 3
-
-=item ->do ( 'callback_func' [, $arg1, ... ] )
+=head2 $mce->do ( 'callback_func' [, $arg1, ... ] )
 
 MCE serializes data transfers from a worker process via helper functions
 do & sendto to the manager process. The callback function can optionally
@@ -1656,7 +1536,7 @@ MCE knows if wanting a void, list, hash, or a scalar return value.
    my %hash   = MCE->do('callback' [, $arg1, ... ]);
    my $scalar = MCE->do('callback' [, $arg1, ... ]);
 
-=item ->exit ( [ $status [, $message [, $id ] ] ] )
+=head2 $mce->exit ( [ $status [, $message [, $id ] ] ] )
 
 A worker exits from MCE entirely. $id (optional) can be used for passing the
 primary key or a string along with the message. Look at the on_post_exit
@@ -1667,7 +1547,7 @@ or on_post_run options for callback support.
    MCE->exit(2, 'chunk failed', $chunk_id);
    MCE->exit(0, 'msg_foo', 'id_1000');
 
-=item ->gather ( $arg1, [, $arg2, ... ] )
+=head2 $mce->gather ( $arg1, [, $arg2, ... ] )
 
 A worker can submit data to the location specified via the gather option by
 calling this method. See L<MCE::Flow|MCE::Flow> and L<MCE::Loop|MCE::Loop>
@@ -1731,7 +1611,7 @@ for additional use-case.
    Worker 1: Hello from hoste
    Exit status: 0
 
-=item ->last ( void )
+=head2 $mce->last ( void )
 
 Worker leaves the chunking loop or user_func block immediately. Callable from
 inside foreach, forchunk, forseq, and user_func.
@@ -1769,7 +1649,7 @@ inside foreach, forchunk, forseq, and user_func.
    5
    6
 
-=item ->next ( void )
+=head2 $mce->next ( void )
 
 Worker starts the next iteration of the chunking loop. Callable from inside
 foreach, forchunk, forseq, and user_func.
@@ -1803,11 +1683,11 @@ foreach, forchunk, forseq, and user_func.
    79
    80
 
-=item ->printf ( $format, $list [, ... ] )
+=head2 $mce->printf ( $format, $list [, ... ] )
 
-=item ->print ( $list [, ... ] )
+=head2 $mce->print ( $list [, ... ] )
 
-=item ->say ( $list [, ... ] )
+=head2 $mce->say ( $list [, ... ] )
 
 Use the printf, print, and say methods when wanting to serialize output among
 workers. These are sugar syntax for the sendto method. These behave similar
@@ -1835,167 +1715,7 @@ reference.
    MCE->print(\*STDOUT, \@array, "\n");
    MCE->print("", \@array, "\n");         ## ok
 
-=item ->relay ( sub { ... } )
-
-=item relay { ... }
-
-The relay method is for receiving and passing on information. Relay is enabled
-by specifing the init_relay option which takes a hash or array reference, or a
-scalar value. Relaying is orderly and driven by chunk_id when processing data,
-otherwise task_wid. Omitting the code block (e.g. MCE::relay) relays forward.
-
-Relaying is not met for passing big data. The last worker will likely stall if
-exceeding the buffer size for the socket. Not exceeding 8 KiB is safe across
-all platforms.
-
-Also see examples findnull.pl, cat.pl, or biofasta/fasta_aidx.pl.
-
-Below, relaying multiple values (HASH reference);
-
-   use MCE::Flow max_workers => 4;
-
-   mce_flow {
-      init_relay => { p => 0, e => 0 },
-   },
-   sub {
-      my $wid = MCE->wid;
-
-      ## do work
-      my $pass = $wid % 3;
-      my $errs = $wid % 2;
-
-      ## relay
-      my %last_rpt = MCE::relay { $_->{p} += $pass; $_->{e} += $errs };
-
-      MCE->print("$wid: passed $pass, errors $errs\n");
-
-      return;
-   };
-
-   my %results = MCE->relay_final;
-
-   print "   passed $results{p}, errors $results{e} final\n\n";
-
-   -- Output
-
-   1: passed 1, errors 1
-   2: passed 2, errors 0
-   3: passed 0, errors 1
-   4: passed 1, errors 0
-      passed 4, errors 2 final
-
-or multiple values (ARRAY reference);
-
-   use MCE::Flow max_workers => 4;
-
-   mce_flow {
-      init_relay => [ 0, 0 ],
-   },
-   sub {
-      my $wid = MCE->wid;
-
-      ## do work
-      my $pass = $wid % 3;
-      my $errs = $wid % 2;
-
-      ## relay
-      my @last_rpt = MCE::relay { $_->[0] += $pass; $_->[1] += $errs };
-
-      MCE->print("$wid: passed $pass, errors $errs\n");
-
-      return;
-   };
-
-   my ($pass, $errs) = MCE->relay_final;
-
-   print "   passed $pass, errors $errs final\n\n";
-
-   -- Output
-
-   1: passed 1, errors 1
-   2: passed 2, errors 0
-   3: passed 0, errors 1
-   4: passed 1, errors 0
-      passed 4, errors 2 final
-
-or simply a scalar value.
-
-   use MCE::Flow max_workers => 4;
-
-   mce_flow {
-      init_relay => 0,
-   },
-   sub {
-      my $wid = MCE->wid;
-
-      ## do work
-      my $bytes_read = 1000 + ((MCE->wid % 3) * 3);
-
-      ## relay
-      my $last_offset = MCE::relay { $_ += $bytes_read };
-
-      ## output
-      MCE->print("$wid: $bytes_read\n");
-
-      return;
-   };
-
-   my $total = MCE->relay_final;
-
-   print "   $total size\n\n";
-
-   -- Output
-
-   1: 1003
-   2: 1006
-   3: 1000
-   4: 1003
-      4012 size
-
-=item ->relay_recv ( void )
-
-The relay_recv method allows one to perform an exclusive action prior to
-relaying. Below, the user_func is taken from the cat.pl example. Think of
-obtaining exclusive locking in an orderly fashion. Relaying is chunk_id
-driven (or task_wid when not processing input), thus orderly.
-
-   user_func => sub {
-      my ($mce, $chunk_ref, $chunk_id) = @_;
-
-      if ($n_flag) {
-         my $output = ''; my $line_count = ($$chunk_ref =~ tr/\n//);
-         my $lines_read = MCE::relay { $_ += $line_count };
-
-         open my $fh, '<', $chunk_ref;
-         $output .= sprintf "%6d\t%s", ++$lines_read, $_ while (<$fh>);
-         close $fh;
-
-         $output .= ":$chunk_id";
-         MCE->do('display_chunk', $output);
-      }
-      else {
-         ## The following is another way to have ordered output. Workers
-         ## write directly to STDOUT exclusively without any involvement
-         ## from the manager process. The statements between relay_recv
-         ## and relay run serially and most important orderly.
-         ##
-         ## (This is not recommended for sprintf above requiring extra
-         ## CPU time. Thus, better to run in parallel and send the
-         ## output to the manager process.)
-
-         MCE->relay_recv;             ## my $val = MCE->relay_recv;
-                                      ## 0, relay below simply forwards
-
-         $| = 1; print $$chunk_ref;   ## exclusive access to STDOUT
-                                      ## important, flush immediately
-
-         MCE->relay;
-      }
-
-      return;
-   } 
-
-=item ->sendto ( $to, $arg1, ... )
+=head2 $mce->sendto ( $to, $arg1, ... )
 
 The sendto method is called by workers for serializing data to standard output,
 standard error, or end of file. The action is done by the manager process.
@@ -2048,7 +1768,7 @@ file handle.
    MCE->sendto('fd:2', "foo\n", \@array, \$scalar, "\n");
    MCE->sendto($fh, "foo\n", \@array, \$scalar, "\n");
 
-=item ->sync ( void )
+=head2 $mce->sync ( void )
 
 A barrier sync operation means any worker must stop at this point until all
 workers reach this barrier. Barrier syncing is useful for many computer
@@ -2139,7 +1859,7 @@ MCE->sync with MCE->do or output serialization methods inside a loop.
       }
    }
 
-=item ->yield ( void )
+=head2 $mce->yield ( void )
 
 There may be on occasion when the MCE driven app is too fast. The interval
 option combined with the yield method, both introduced with MCE 1.5, allows
@@ -2303,8 +2023,6 @@ uses 2 workers to minimize the output size. Input is from the sequence option.
 
 The interval.pl example above is included with MCE.
 
-=back
-
 =head1 INDEX
 
 L<MCE|MCE>
@@ -2312,14 +2030,6 @@ L<MCE|MCE>
 =head1 AUTHOR
 
 Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
-
-=head1 LICENSE
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

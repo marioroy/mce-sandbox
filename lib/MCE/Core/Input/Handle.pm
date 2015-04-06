@@ -14,19 +14,17 @@ package MCE::Core::Input::Handle;
 use strict;
 use warnings;
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-use bytes;
-
-## Warnings are disabled to minimize bits of noise when user or OS signals
-## the script to exit. e.g. MCE_script.pl < infile | head
-
 no warnings 'threads';
+no warnings 'recursion';
 no warnings 'uninitialized';
+
+use bytes;
 
 my $_que_read_size = $MCE::_que_read_size;
 my $_que_template  = $MCE::_que_template;
@@ -42,8 +40,6 @@ sub _worker_read_handle {
    my ($self, $_proc_type, $_input_data) = @_;
 
    @_ = ();
-
-   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
    _croak('MCE::_worker_read_handle: (user_func) is not specified')
       unless (defined $self->{user_func});

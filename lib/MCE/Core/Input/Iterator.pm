@@ -14,16 +14,14 @@ package MCE::Core::Input::Iterator;
 use strict;
 use warnings;
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-## Warnings are disabled to minimize bits of noise when user or OS signals
-## the script to exit. e.g. MCE_script.pl < infile | head
-
 no warnings 'threads';
+no warnings 'recursion';
 no warnings 'uninitialized';
 
 ###############################################################################
@@ -37,8 +35,6 @@ sub _worker_user_iterator {
    my ($self) = @_;
 
    @_ = ();
-
-   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
    _croak('MCE::_worker_user_iterator: (user_func) is not specified')
       unless (defined $self->{user_func});

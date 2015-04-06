@@ -11,12 +11,16 @@ use warnings;
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 
+use Socket qw( PF_UNIX PF_UNSPEC SOCK_STREAM );
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
 
-our @EXPORT_OK = qw( get_ncpu );
+my  $_is_winenv = ($^O eq 'cygwin' || $^O eq 'MSWin32') ? 1 : 0;
+our $LF = "\012";  Internals::SvREADONLY($LF, 1);
+
+our @EXPORT_OK = qw( $LF get_ncpu );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 ###############################################################################
@@ -121,6 +125,69 @@ sub get_ncpu {
 ## Private methods.
 ##
 ###############################################################################
+
+sub _destroy_sockets {
+
+   my ($_obj, @_params) = @_;
+
+   local ($!, $?);
+
+   for my $_p (@_params) {
+      if (defined $_obj->{$_p}) {
+         if (ref $_obj->{$_p} eq 'ARRAY') {
+            for my $_i (0 .. @{ $_obj->{$_p} } - 1) {
+               ## an empty socket may not close immediately in Windows/Cygwin
+               syswrite $_obj->{$_p}->[$_i], '0' if ($_is_winenv); # hack
+               CORE::shutdown $_obj->{$_p}->[$_i], 2;
+               close $_obj->{$_p}->[$_i];
+               undef $_obj->{$_p}->[$_i];
+            }
+         }
+         else {
+            syswrite $_obj->{$_p}, '0' if ($_is_winenv); # ditto
+            CORE::shutdown $_obj->{$_p}, 2;
+            close $_obj->{$_p};
+         }
+         undef $_obj->{$_p};
+      }
+   }
+
+   return;
+}
+
+sub _make_socket_pair {
+
+   my ($_obj, $_r_sock, $_w_sock, $_i) = @_;
+
+   local $!; my $_old_hndl;
+
+   if (defined $_i) {
+      socketpair( $_obj->{$_r_sock}->[$_i], $_obj->{$_w_sock}->[$_i],
+         PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
+
+      binmode $_obj->{$_r_sock}->[$_i];
+      binmode $_obj->{$_w_sock}->[$_i];
+
+      ## Autoflush handles.
+      $_old_hndl = select $_obj->{$_r_sock}->[$_i]; $| = 1;
+                   select $_obj->{$_w_sock}->[$_i]; $| = 1;
+   }
+   else {
+      socketpair( $_obj->{$_r_sock}, $_obj->{$_w_sock},
+         PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
+
+      binmode $_obj->{$_r_sock};
+      binmode $_obj->{$_w_sock};
+
+      ## Autoflush handles.
+      $_old_hndl = select $_obj->{$_r_sock}; $| = 1;
+                   select $_obj->{$_w_sock}; $| = 1;
+   }
+
+   select $_old_hndl;
+
+   return;
+}
 
 sub _parse_max_workers {
 
@@ -254,7 +321,7 @@ MCE::Util - Utility functions for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.600
+This document describes MCE::Util version 1.605
 
 =head1 SYNOPSIS
 
@@ -317,14 +384,6 @@ L<MCE|MCE>
 =head1 AUTHOR
 
 Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
-
-=head1 LICENSE
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

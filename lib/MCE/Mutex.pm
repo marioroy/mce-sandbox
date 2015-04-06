@@ -9,103 +9,91 @@ package MCE::Mutex;
 use strict;
 use warnings;
 
-use Socket qw( :crlf PF_UNIX PF_UNSPEC SOCK_STREAM );
+no warnings 'threads';
+no warnings 'recursion';
+no warnings 'uninitialized';
 
-our $VERSION = '1.600';
+use MCE::Util qw( $LF );
+use bytes;
+
+our $VERSION = '1.605';
 
 sub DESTROY {
 
-   my ($_mutex) = @_;
+   my ($_mutex, $_arg) = @_;
+   my $_id = $INC{'threads.pm'} ? $$ .'.'. threads->tid() : $$;
 
-   return if (defined $MCE::MCE && $MCE::MCE->wid);
+   $_mutex->unlock() if ($_mutex->{ $_id });
 
-   if (defined $_mutex->{_r_sock}) {
-      local ($!, $?);
-
-      CORE::shutdown $_mutex->{_w_sock}, 2;
-      CORE::shutdown $_mutex->{_r_sock}, 2;
-
-      close $_mutex->{_w_sock}; undef $_mutex->{_w_sock};
-      close $_mutex->{_r_sock}; undef $_mutex->{_r_sock};
+   if (!defined $_arg || $_arg ne 'shutdown') {
+      return if (defined $MCE::VERSION && !defined $MCE::MCE->{_wid});
+      return if (defined $MCE::MCE && $MCE::MCE->{_wid});
    }
+
+   MCE::Util::_destroy_sockets($_mutex, qw(_w_sock _r_sock));
 
    return;
 }
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## New instance instantiation.
+## Public methods.
 ##
 ###############################################################################
 
 sub new {
 
-   my ($_class, %_argv) = @_;
-
-   @_ = (); local $!;
-
-   return if (defined $MCE::MCE && $MCE::MCE->wid);
-
+   my ($_class, %_argv) = @_;   @_ = ();
    my $_mutex = {}; bless($_mutex, ref($_class) || $_class);
 
-   socketpair( $_mutex->{_r_sock}, $_mutex->{_w_sock},
-      PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
+   MCE::Util::_make_socket_pair($_mutex, qw(_w_sock _r_sock));
 
-   binmode $_mutex->{_r_sock};
-   binmode $_mutex->{_w_sock};
-
-   my $_old_hndl = select $_mutex->{_r_sock}; $| = 1;
-                   select $_mutex->{_w_sock}; $| = 1;
-
-   select $_old_hndl;
-
-   syswrite $_mutex->{_w_sock}, '0';
+   syswrite($_mutex->{_w_sock}, '0');
 
    return $_mutex;
 }
 
-###############################################################################
-## ----------------------------------------------------------------------------
-## Lock method.
-##
-###############################################################################
-
 sub lock {
 
-   my ($_mutex) = @_;
+   my $_mutex = shift;
+   my $_id    = $INC{'threads.pm'} ? $$ .'.'. threads->tid() : $$;
 
-   sysread $_mutex->{_r_sock}, my $_b, 1;
+   unless ($_mutex->{ $_id }) {
+      sysread($_mutex->{_r_sock}, my $_b, 1);
+      $_mutex->{ $_id } = 1;
+   }
 
    return;
 }
-
-###############################################################################
-## ----------------------------------------------------------------------------
-## Unlock method.
-##
-###############################################################################
 
 sub unlock {
 
-   my ($_mutex) = @_;
+   my $_mutex = shift;
+   my $_id    = $INC{'threads.pm'} ? $$ .'.'. threads->tid() : $$;
 
-   syswrite $_mutex->{_w_sock}, '0';
+   if ($_mutex->{ $_id }) {
+      syswrite($_mutex->{_w_sock}, '0');
+      $_mutex->{ $_id } = 0;
+   }
 
    return;
 }
-
-###############################################################################
-## ----------------------------------------------------------------------------
-## Synchronize method.
-##
-###############################################################################
 
 sub synchronize {
 
    my ($_mutex, $_code) = (shift, shift);
 
    if (ref $_code eq 'CODE') {
-      $_mutex->lock; $_code->(@_); $_mutex->unlock;
+      if (defined wantarray) {
+         $_mutex->lock();   my @_a = $_code->(@_);
+         $_mutex->unlock();
+
+         return wantarray ? @_a : $_a[0];
+      }
+      else {
+         $_mutex->lock();   $_code->(@_);
+         $_mutex->unlock();
+      }
    }
 
    return;
@@ -127,7 +115,7 @@ MCE::Mutex - Simple semaphore for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Mutex version 1.600
+This document describes MCE::Mutex version 1.605
 
 =head1 SYNOPSIS
 
@@ -161,32 +149,38 @@ This document describes MCE::Mutex version 1.600
 =head1 DESCRIPTION
 
 This module implements locking methods that can be used to coordinate access
-to shared data from multiple workers spawned as threads or processes.
+to shared data from multiple workers spawned as processes or threads.
 
-=back
+The inspiration for this module came from reading Mutex for Ruby.
 
 =head1 API DOCUMENTATION
 
-=over 3
-
-=item ->new ( void )
+=head2 MCE::Mutex->new ( void )
 
 Creates a new mutex.
 
-=item ->lock ( void )
+=head2 $m->lock ( void )
 
-Attempts to grab the lock and waits if not available.
+Attempts to grab the lock and waits if not available. Multiple calls to
+mutex->lock by the same process or thread is safe. The mutex will remain
+locked until mutex->unlock is called.
 
-=item ->unlock ( void )
+=head2 $m->unlock ( void )
 
-Releases the lock.
+Releases the lock. A held lock by an exiting process or thread is released
+automatically.
 
-=item ->synchronize ( sub { ... }, @_ )
+=head2 $m->synchronize ( sub { ... }, @_ )
 
 Obtains a lock, runs the code block, and releases the lock after the block
-completes.
+completes. Optionally, the method is wantarray aware.
 
-=back
+   my $value = $m->synchronize( sub {
+
+      ## access shared resource
+
+      'value';
+   });
 
 =head1 INDEX
 
@@ -195,14 +189,6 @@ L<MCE|MCE>
 =head1 AUTHOR
 
 Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
-
-=head1 LICENSE
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

@@ -14,20 +14,17 @@ package MCE::Core::Worker;
 use strict;
 use warnings;
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-use Time::HiRes qw( sleep time );
-use bytes;
-
-## Warnings are disabled to minimize bits of noise when user or OS signals
-## the script to exit. e.g. MCE_script.pl < infile | head
-
 no warnings 'threads';
+no warnings 'recursion';
 no warnings 'uninitialized';
+
+use bytes;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -38,8 +35,8 @@ no warnings 'uninitialized';
 
 {
    my (
-      $_DAT_LOCK, $_DAT_W_SOCK, $_DAU_W_SOCK, $_tag, $_value, $_want_id,
-      $_chn, $_dest, $_len, $_lock_chn, $_task_id, $_user_func
+      $_dest, $_len, $_tag, $_task_id, $_user_func, $_value, $_want_id,
+      $_DAT_LOCK, $_DAT_W_SOCK, $_DAU_W_SOCK, $_lock_chn, $_chn
    );
 
    ## Create array structure containing various send functions.
@@ -111,9 +108,7 @@ no warnings 'uninitialized';
 
    sub _do_callback {
 
-      my $_buf; my $self = shift;
-
-      $_value = shift;
+      my ($self, $_buf, $_aref);  ($self, $_value, $_aref) = @_;
 
       unless (defined wantarray) {
          $_want_id = WANTS_UNDEF;
@@ -125,10 +120,10 @@ no warnings 'uninitialized';
 
       ## Crossover: Send arguments
 
-      if (scalar @_ > 0) {                        ## Multiple Args >> Callback
-         if (scalar @_ > 1 || ref $_[0]) {
+      if (scalar @{ $_aref } > 0) {               ## Multiple Args >> Callback
+         if (scalar @{ $_aref } > 1 || ref $_aref->[0]) {
             $_tag = OUTPUT_A_CBK;
-            $_buf = $self->{freeze}(\@_);
+            $_buf = $self->{freeze}($_aref);
             $_len = length $_buf; local $\ = undef if (defined $\);
 
             flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
@@ -139,15 +134,13 @@ no warnings 'uninitialized';
          }
          else {                                   ## Scalar >> Callback
             $_tag = OUTPUT_S_CBK;
-            $_len = length $_[0]; local $\ = undef if (defined $\);
+            $_len = length $_aref->[0]; local $\ = undef if (defined $\);
 
             flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
             print {$_DAT_W_SOCK} $_tag . $LF . $_chn . $LF;
             print {$_DAU_W_SOCK} $_want_id . $LF . $_value . $LF . $_len . $LF;
-            print {$_DAU_W_SOCK} $_[0];
+            print {$_DAU_W_SOCK} $_aref->[0];
          }
-
-         @_ = ();
       }
       else {                                      ## No Args >> Callback
          $_tag = OUTPUT_N_CBK;
@@ -196,29 +189,29 @@ no warnings 'uninitialized';
 
    sub _do_gather {
 
-      my $_buf; my $self = shift;
+      my $_buf; my ($self, $_aref) = @_;
 
-      return unless (scalar @_);
+      return unless (scalar @{ $_aref });
 
-      if (scalar @_ > 1) {
+      if (scalar @{ $_aref } > 1) {
          $_tag = OUTPUT_A_GTR;
-         $_buf = $self->{freeze}(\@_);
+         $_buf = $self->{freeze}($_aref);
          $_len = length $_buf;
       }
-      elsif (ref $_[0]) {
+      elsif (ref $_aref->[0]) {
          $_tag = OUTPUT_R_GTR;
-         $_buf = $self->{freeze}($_[0]);
+         $_buf = $self->{freeze}($_aref->[0]);
          $_len = length $_buf;
       }
       else {
          $_tag = OUTPUT_S_GTR;
-         if (defined $_[0]) {
-            $_len = length $_[0]; local $\ = undef if (defined $\);
+         if (defined $_aref->[0]) {
+            $_len = length $_aref->[0]; local $\ = undef if (defined $\);
 
             flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
             print {$_DAT_W_SOCK} $_tag . $LF . $_chn . $LF;
             print {$_DAU_W_SOCK} $_task_id . $LF . $_len . $LF;
-            print {$_DAU_W_SOCK} $_[0];
+            print {$_DAU_W_SOCK} $_aref->[0];
             flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
 
             return;
@@ -298,11 +291,11 @@ no warnings 'uninitialized';
       return;
    }
 
+   ## -------------------------------------------------------------------------
+
    sub _do_send_init {
 
       my ($self) = @_;
-
-      die 'Private method called' unless (caller)[0]->isa( ref $self );
 
       $_chn        = $self->{_chn};
       $_DAT_LOCK   = $self->{_dat_lock};
@@ -310,6 +303,22 @@ no warnings 'uninitialized';
       $_DAU_W_SOCK = $self->{_dat_w_sock}->[$_chn];
       $_lock_chn   = $self->{_lock_chn};
       $_task_id    = $self->{_task_id};
+
+      local ($!, $@);
+
+      eval { select STDERR; $| = 1 };
+      eval { select STDOUT; $| = 1 };
+
+      return;
+   }
+
+   sub _do_send_clear {
+
+      my ($self) = @_;
+
+      $_dest = $_len = $_task_id = $_user_func = $_value = $_want_id = undef;
+      $_DAT_LOCK = $_DAT_W_SOCK = $_DAU_W_SOCK = $_lock_chn = $_chn = undef;
+      $_tag = undef;
 
       return;
    }
@@ -348,8 +357,6 @@ sub _worker_do {
 
    @_ = ();
 
-   die 'Private method called' unless (caller)[0]->isa( ref $self );
-
    ## Set options.
    $self->{_abort_msg}  = $_params_ref->{_abort_msg};
    $self->{_run_mode}   = $_params_ref->{_run_mode};
@@ -371,10 +378,10 @@ sub _worker_do {
    my $_task_name  = $self->{task_name};
 
    ## Do not override params if defined in user_tasks during instantiation.
-   for (qw(bounds_only chunk_size interval sequence user_args)) {
-      if (defined $_params_ref->{"_$_"}) {
-         $self->{$_} = $_params_ref->{"_$_"}
-            unless (defined $self->{_task}->{$_});
+   for my $_p (qw(bounds_only chunk_size interval sequence user_args)) {
+      if (defined $_params_ref->{"_${_p}"}) {
+         $self->{$_p} = $_params_ref->{"_${_p}"}
+            unless (defined $self->{_task}->{$_p});
       }
    }
 
@@ -480,8 +487,6 @@ sub _worker_loop {
 
    @_ = ();
 
-   die 'Private method called' unless (caller)[0]->isa( ref $self );
-
    my ($_response, $_len, $_buf, $_params_ref);
 
    my $_COM_LOCK   = $self->{_com_lock};
@@ -526,7 +531,7 @@ sub _worker_loop {
             ## Return to caller if instructed to exit.
             if ($_response eq '_exit') {
                flock $_COM_LOCK, LOCK_UN;
-               return 0;
+               return;
             }
 
             ## Retrieve params data.
@@ -545,13 +550,14 @@ sub _worker_loop {
       next if ($_response eq '_data');
 
       ## Wait until MCE completes params submission to all workers.
-      my $_c; sysread $self->{_bse_r_sock}, $_c, 1;
+      sysread $self->{_bse_r_sock}, (my $_c), 1;
 
       if (defined $_job_delay && $_job_delay > 0.0) {
          sleep $_job_delay * $_wid;
       }
 
       _worker_do($self, $_params_ref);
+
       undef $_params_ref;
    }
 
@@ -572,41 +578,51 @@ sub _worker_loop {
 sub _worker_main {
 
    my ( $self, $_wid, $_task, $_task_id, $_task_wid, $_params,
-        $_plugin_worker_init, $_has_threads, $_is_winenv ) = @_;
+        $_plugin_worker_init, $_is_winenv ) = @_;
 
    @_ = ();
-
-   ## Commented out -- fails with the 'forks' module under FreeBSD.
-   ## die 'Private method called' unless (caller)[0]->isa( ref $self );
 
    if (exists $self->{input_data}) {
       my $_ref = ref $self->{input_data};
       delete $self->{input_data} if ($_ref && $_ref ne 'SCALAR');
    }
 
-   ## Define status ID.
-   my $_use_threads = (defined $_task->{use_threads})
-      ? $_task->{use_threads} : $self->{use_threads};
-
-   if ($_has_threads && $_use_threads) {
-      $self->{_exit_pid} = 'TID_' . threads->tid();
-   } else {
-      $self->{_exit_pid} = 'PID_' . $$;
-   }
-
    ## Define DIE handler.
    local $SIG{__DIE__} = sub {
-      if (!defined $^S || $^S) {                          ## Perl state
-         my $_lmsg = Carp::longmess();
-         if ($_lmsg =~ /^[^\n]+\n\teval /) {              ## In eval?
+      if (!defined $^S || $^S) {
+         if ( ($INC{'threads.pm'} && threads->tid() != 0) ||
+               $ENV{'PERL_IPERL_RUNNING'}
+         ) {
+            # thread env or running inside IPerl, check stack trace
+            my $_t = Carp::longmess(); $_t =~ s/\teval [^\n]+\n$//;
+
+            if ( $_t =~ /^(?:[^\n]+\n){1,7}\teval / ||
+                 $_t =~ /\n\teval [^\n]+\n\t(?:eval|Try)/ )
+            {
+               CORE::die(@_);
+            }
+         }
+         else {
+            # normal env, trust $^S
             CORE::die(@_);
          }
       }
+
       my $_die_msg = (defined $_[0]) ? $_[0] : '';
       local $SIG{__DIE__} = sub { }; local $\ = undef;
       print {*STDERR} $_die_msg;
       $self->exit(255, $_die_msg);
    };
+
+   ## Define status ID.
+   my $_use_threads = (defined $_task->{use_threads})
+      ? $_task->{use_threads} : $self->{use_threads};
+
+   if ($INC{'threads.pm'} && $_use_threads) {
+      $self->{_exit_pid} = 'TID_' . threads->tid();
+   } else {
+      $self->{_exit_pid} = 'PID_' . $$;
+   }
 
    ## Use options from user_tasks if defined.
    $self->{max_workers} = $_task->{max_workers} if ($_task->{max_workers});
@@ -621,37 +637,30 @@ sub _worker_main {
    $self->{user_end}    = $_task->{user_end}    if ($_task->{user_end});
 
    ## Init runtime vars. Obtain handle to lock files.
+   my ($_COM_LOCK, $_DAT_LOCK, $_chn);
    my $_mce_sid  = $self->{_mce_sid};
    my $_sess_dir = $self->{_sess_dir};
 
    if (defined $_params && exists $_params->{_chn}) {
-      $self->{_chn} = delete $_params->{_chn};
+      $_chn = $self->{_chn} = delete $_params->{_chn};
    } else {
-      $self->{_chn} = $_wid % $self->{_data_channels} + 1;
+      $_chn = $self->{_chn} = $_wid % $self->{_data_channels} + 1;
    }
 
-   $self->{_task_id}    = (defined $_task_id ) ? $_task_id  : 0;
-   $self->{_task_wid}   = (defined $_task_wid) ? $_task_wid : $_wid;
-   $self->{_task}       = $_task;
-   $self->{_wid}        = $_wid;
+   $self->{_task_id}  = (defined $_task_id ) ? $_task_id  : 0;
+   $self->{_task_wid} = (defined $_task_wid) ? $_task_wid : $_wid;
+   $self->{_task}     = $_task;
+   $self->{_wid}      = $_wid;
 
-   ## Unset the need for channel locking if only worker riding the channel.
+   ## Unset the need for channel locking if only worker on the channel.
    if ($self->{_init_total_workers} < DATA_CHANNELS * 2) {
       if ($_wid > $self->{_init_total_workers} % DATA_CHANNELS) {
          $self->{_lock_chn} = 0 if ($_wid <= DATA_CHANNELS);
       }
    }
 
-   my ($_COM_LOCK, $_DAT_LOCK);
-   my $_lock_chn = $self->{_lock_chn};
-   my $_chn      = $self->{_chn};
-
-   for (1 .. $self->{_data_channels}) {
-      $self->{_dat_r_sock}->[$_] = $self->{_dat_w_sock}->[$_] = undef
-         unless ($_ == $_chn);
-   }
-
-   if ($_lock_chn) {
+   ## Choose locks for DATA channels.
+   if ($self->{_lock_chn}) {
       open $_DAT_LOCK, '+>>:raw:stdio', "$_sess_dir/_dat.lock.$_chn"
          or die "(W) open error $_sess_dir/_dat.lock.$_chn: $!\n";
    }
@@ -672,40 +681,34 @@ sub _worker_main {
    MCE::_clean_sessions($_mce_sid);
 
    ## Call module's worker_init routine for modules plugged into MCE.
-   $_->($self) for (@{ $_plugin_worker_init });
+   for my $_p (@{ $_plugin_worker_init }) { $_p->($self); }
 
    _do_send_init($self);
 
    ## Begin processing if worker was added during processing. Otherwise,
    ## respond back to the main process if the last worker spawned.
    if (defined $_params) {
-      sleep 0.002;
-      _worker_do($self, $_params);
-      undef $_params;
-   }
-   elsif ($self->{_wid} == $self->{_total_workers}) {
-      my $_buf; my $_COM_W_SOCK = $self->{_com_w_sock};
-      sysread $self->{_que_r_sock}, $_buf, 1;
-      local $\ = undef; print {$_COM_W_SOCK} $LF;
+      sleep 0.002; _worker_do($self, $_params); undef $_params;
+   } else {
+      lock $MCE::_WIN_LOCK if ($_is_winenv);
    }
 
-   ## Enter worker loop.
-   my $_status = _worker_loop($self);
+   ## Enter worker loop. Clear worker session after running.
+   _worker_loop($self); _do_send_clear($self);
+
+   $self->{_com_lock} = undef;
+   $self->{_dat_lock} = undef;
+
    MCE::_clear_session($_mce_sid);
 
    ## Wait until MCE completes exit notification.
    $SIG{__DIE__} = $SIG{__WARN__} = sub { };
 
-   select STDERR; $| = 1;
-   select STDOUT; $| = 1;
-
    local $@; eval {
-      my $_c; sysread $self->{_bse_r_sock}, $_c, 1;
+      sysread $self->{_bse_r_sock}, (my $_c), 1;
    };
 
-   sleep 0.005 if ($_is_winenv);
-
-   if ($_lock_chn) {
+   if ($self->{_lock_chn}) {
       close $_DAT_LOCK; undef $_DAT_LOCK;
    }
 

@@ -14,16 +14,14 @@ package MCE::Core::Input::Sequence;
 use strict;
 use warnings;
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-## Warnings are disabled to minimize bits of noise when user or OS signals
-## the script to exit. e.g. MCE_script.pl < infile | head
-
 no warnings 'threads';
+no warnings 'recursion';
 no warnings 'uninitialized';
 
 my $_que_read_size = $MCE::_que_read_size;
@@ -40,8 +38,6 @@ sub _worker_sequence_queue {
    my ($self) = @_;
 
    @_ = ();
-
-   die 'Private method called' unless (caller)[0]->isa( ref $self );
 
    _croak('MCE::_worker_sequence_queue: (user_func) is not specified')
       unless (defined $self->{user_func});
@@ -120,10 +116,10 @@ sub _worker_sequence_queue {
                   );
                   $_start = 1 if ($_start < 1);
 
-                  for ($_start .. $_chunk_size) {
+                  for my $_i ($_start .. $_chunk_size) {
                      last if ($_seq_n > $_end);
                      $_tmp_e = $_seq_n;
-                     $_seq_n = $_step * $_ + $_n_begin;
+                     $_seq_n = $_step * $_i + $_n_begin;
                   }
                }
             }
@@ -137,10 +133,10 @@ sub _worker_sequence_queue {
                   );
                   $_start = 1 if ($_start < 1);
 
-                  for ($_start .. $_chunk_size) {
+                  for my $_i ($_start .. $_chunk_size) {
                      last if ($_seq_n < $_end);
                      $_tmp_e = $_seq_n;
-                     $_seq_n = $_step * $_ + $_n_begin;
+                     $_seq_n = $_step * $_i + $_n_begin;
                   }
                }
             }
@@ -165,24 +161,24 @@ sub _worker_sequence_queue {
                   next;
                }
                else {
-                  for (1 .. $_chunk_size) {
+                  for my $_i (1 .. $_chunk_size) {
                      last if ($_seq_n > $_end);
 
                      push @_n, (defined $_fmt)
                         ? sprintf("%$_fmt", $_seq_n) : $_seq_n;
 
-                     $_seq_n = $_step * $_ + $_n_begin;
+                     $_seq_n = $_step * $_i + $_n_begin;
                   }
                }
             }
             else {
-               for (1 .. $_chunk_size) {
+               for my $_i (1 .. $_chunk_size) {
                   last if ($_seq_n < $_end);
 
                   push @_n, (defined $_fmt)
                      ? sprintf("%$_fmt", $_seq_n) : $_seq_n;
 
-                  $_seq_n = $_step * $_ + $_n_begin;
+                  $_seq_n = $_step * $_i + $_n_begin;
                }
             }
          }

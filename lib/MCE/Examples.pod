@@ -5,7 +5,7 @@ MCE::Examples - A list of examples demonstrating Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.600
+This document describes MCE::Examples version 1.605
 
 =head1 DESCRIPTION
 
@@ -49,29 +49,27 @@ The following scripts are located under the examples directory.
         Demonstrates MCE::Flow, MCE::Queue, and MCE->gather.
 
    foreach.pl, forseq.pl, forchunk.pl
-        These examples demonstrate the sqrt example from Parallel::Loops.
-        Parallel::Loops utilizes Parallel::ForkManager.
+        These examples demonstrate the sqrt example from Parallel::Loops
+        (Parallel::Loops v0.07 utilizing Parallel::ForkManager v1.07).
 
-        Tested on Mac OS X 10.9.5; with Perl 5.16.2; 2.6 GHz Core i7;
-        1600 MHz RAM. The number indicates the size of input displayed
-        in 1 second. Output was directed to >/dev/null during testing.
+        Testing was on a Linux VM; Perl v5.20.1; Haswell i7 at 2.6 GHz.
+        The number indicates the size of input displayed in 1 second.
+        Output was directed to >/dev/null.
 
-        Parallel::Loops:        800  Forking each @input is expensive
-        MCE->foreach...:     80,000  Workers persist between each @input
-        MCE->forseq....:    200,000  Uses sequence of numbers as input
-        MCE->forchunk..:  1,000,000  IPC overhead is greatly reduced
+        Parallel::Loops:     1,600  Forking each @input is expensive
+        MCE->foreach...:    23,000  Workers persist between each @input
+        MCE->forseq....:   200,000  Uses sequence of numbers as input
+        MCE->forchunk..:   800,000  IPC overhead is greatly reduced
 
    interval.pl, mutex.pl, relay.pl
         Demonstration of the interval option appearing in MCE 1.5.
-        Mutex locking and receiving and passing on information.
+        Mutex locking and relaying data among workers.
 
    iterator.pl
         Similar to forseq.pl. Specifies an iterator for input_data.
         A factory function is called which returns a closure.
 
-   ping.pl, pipe1.pl, pipe2.pl
-        Report back failed pings to standard output.
-
+   pipe1.pl, pipe2.pl
         Process STDIN or FILE in parallel. Processing is via Perl for
         pipe1.pl, whereas an external command for pipe2.pl.
 
@@ -671,7 +669,7 @@ for the 2nd run and beyond.
 Well, there you have it. MCE is able to complete the same simulation many
 times faster.
 
-=head1 MULTIPLE WORKERS RUNNING IN PARALLEL
+=head1 MANY WORKERS RUNNING IN PARALLEL
 
 There are occasions when one wants several workers to run in parallel without
 having to specify input_data or seqeunce. These two options are optional in
@@ -755,14 +753,6 @@ L<MCE|MCE>
 =head1 AUTHOR
 
 Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
-
-=head1 LICENSE
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 

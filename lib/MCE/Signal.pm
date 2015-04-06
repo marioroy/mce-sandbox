@@ -9,23 +9,22 @@ package MCE::Signal;
 use strict;
 use warnings;
 
-our ($display_die_with_localtime, $display_warn_with_localtime);
-our ($has_threads, $main_proc_id, $prog_name, $tmp_dir);
-
-BEGIN {
-   require Carp;
-   require File::Path;
-
-   $main_proc_id =  $$;
-   $prog_name    =  $0;
-   $prog_name    =~ s{^.*[\\/]}{}g;
-}
-
+use Carp ();
+use File::Path ();
 use Time::HiRes qw( sleep time );
 use Fcntl qw( :flock O_RDONLY );
 use base qw( Exporter );
 
-our $VERSION = '1.600';
+our $VERSION = '1.605';
+
+our ($display_die_with_localtime, $display_warn_with_localtime);
+our ($main_proc_id, $prog_name, $tmp_dir);
+
+BEGIN {
+   $main_proc_id =  $$;
+   $prog_name    =  $0;
+   $prog_name    =~ s{^.*[\\/]}{}g;
+}
 
 our @EXPORT_OK = qw( $tmp_dir sys_cmd stop_and_exit );
 our %EXPORT_TAGS = (
@@ -43,7 +42,7 @@ sub _croak { $\ = undef; goto &Carp::croak; }
 sub _usage { return _croak "MCE::Signal error: ($_[0]) is not a valid option"; }
 sub _flag  { return 1; }
 
-my $_is_mswin32   = ($^O eq 'MSWin32') ? 1 : 0;
+my $_is_MSWin32   = ($^O eq 'MSWin32') ? 1 : 0;
 my $_keep_tmp_dir = 0;
 my $_no_sigmsg    = 0;
 my $_no_kill9     = 0;
@@ -86,7 +85,7 @@ sub import {
    my ($_tmp_dir_base, $_count); $_count = 0;
 
    if (exists $ENV{TEMP}) {
-      if ($_is_mswin32) {
+      if ($_is_MSWin32) {
          $_tmp_dir_base = $ENV{TEMP} . '/mce';
          mkdir $_tmp_dir_base unless (-d $_tmp_dir_base);
       }
@@ -139,7 +138,7 @@ $SIG{TERM} = \&stop_and_exit;                          ## UNIX SIG 15
 ## the reaping of its children, especially when running multiple MCEs
 ## simultaneously.
 ##
-$SIG{CHLD} = 'DEFAULT' unless ($_is_mswin32);
+$SIG{CHLD} = 'DEFAULT' unless ($_is_MSWin32);
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -183,10 +182,10 @@ sub sys_cmd {
 
    ## Kill the process group if command caught SIGINT or SIGQUIT.
 
-   kill('INT',  $main_proc_id, ($_is_mswin32 ? -$$ : -getpgrp))
+   kill('INT',  $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp))
       if $_sig_no == 2;
 
-   kill('QUIT', $main_proc_id, ($_is_mswin32 ? -$$ : -getpgrp))
+   kill('QUIT', $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp))
       if $_sig_no == 3;
 
    return $_exit_status;
@@ -214,17 +213,23 @@ sub sys_cmd {
 
       shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
 
-      my $_sig_name    = $_[0] || 0;
-      my $_exit_status = $?;
-      my $_is_sig      = 0;
+      my $_sig_name        = $_[0] || 0;
+      my $_exit_status     = $?;
+      my $_is_sig          = 0;
+      my $_is_main_thread;
 
       if (exists $_sig_name_lkup{$_sig_name}) {
          $_mce_spawned_ref = undef;
-         $SIG{$_sig_name} = \&_NOOP;
-         $_exit_status = $_is_sig = 1;
-      }
-      else {
+         $SIG{$_sig_name}  = \&_NOOP;
+         $_exit_status     = $_is_sig = 1;
+      } else {
          $_exit_status = $_sig_name if ($_sig_name ne '0');
+      }
+
+      if ($INC{'threads.pm'}) {
+         $_is_main_thread  = ($$ == $main_proc_id && threads->tid() == 0);
+      } else {
+         $_is_main_thread  = ($$ == $main_proc_id);
       }
 
       $SIG{INT} = \&_NOOP if ($_sig_name ne 'INT');
@@ -233,7 +238,7 @@ sub sys_cmd {
       ## ----------------------------------------------------------------------
 
       ## For the main thread / manager process.
-      if ($$ == $main_proc_id) {
+      if ($_is_main_thread) {
 
          if (++$_handler_cnt == 1 && ! -e "$tmp_dir/stopped") {
             open my $_FH, '>', "$tmp_dir/stopped"; close $_FH;
@@ -268,7 +273,7 @@ sub sys_cmd {
                open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
 
                ## Signal process group to terminate.
-               kill('INT', $_is_mswin32 ? -$$ : -getpgrp);
+               kill('INT', $_is_MSWin32 ? -$$ : -getpgrp);
 
                ## Pause a bit.
                if ($_sig_name ne 'PIPE') {
@@ -282,7 +287,7 @@ sub sys_cmd {
             if (defined $tmp_dir && $tmp_dir ne '' && -d $tmp_dir) {
 
                if (defined $_mce_sess_dir_ref) {
-                  foreach my $_sess_dir (keys %{ $_mce_sess_dir_ref }) {
+                  for my $_sess_dir (keys %{ $_mce_sess_dir_ref }) {
                      File::Path::rmtree($_sess_dir);
                      delete $_mce_sess_dir_ref->{$_sess_dir};
                   }
@@ -306,7 +311,7 @@ sub sys_cmd {
                   print {*STDERR} "\n";
                }
                if ($_no_kill9 == 1 || $_sig_name eq 'PIPE') {
-                  kill('INT', $_is_mswin32 ? -$$ : -getpgrp);
+                  kill('INT', $_is_MSWin32 ? -$$ : -getpgrp);
                } else {
                   kill('KILL', -$$, $main_proc_id);
                }
@@ -316,8 +321,8 @@ sub sys_cmd {
 
       ## ----------------------------------------------------------------------
 
-      ## For child processes.
-      if ($$ != $main_proc_id && $_is_sig == 1 && -d $tmp_dir) {
+      ## For child processes / threads.
+      if (!$_is_main_thread && $_is_sig == 1 && -d $tmp_dir) {
 
          ## Signal process group to terminate.
          if (++$_handler_cnt == 1) {
@@ -358,7 +363,7 @@ sub sys_cmd {
          sleep 0.065 for (1..6);
       }
 
-      if ($has_threads && threads->can('exit')) {
+      if ($INC{'threads.pm'} && threads->can('exit')) {
          threads->exit($_exit_status);
       }
 
@@ -379,12 +384,14 @@ sub _shutdown_mce {
    my $_exit_status = $_[0] || $?;
 
    if (defined $_mce_spawned_ref) {
-      my $_tid = ($has_threads) ? threads->tid() : '';
-      $_tid = '' unless defined $_tid;
+      my $_tid = ($INC{'threads.pm'}) ? threads->tid() : '';
+         $_tid = '' unless defined $_tid;
 
-      foreach my $_mce_sid (keys %{ $_mce_spawned_ref }) {
+      for my $_mce_sid (keys %{ $_mce_spawned_ref }) {
          if ($_mce_spawned_ref->{$_mce_sid}->wid()) {
-            $_mce_spawned_ref->{$_mce_sid}->exit($_exit_status);
+
+            $_mce_spawned_ref->{$_mce_sid}->exit($_exit_status)
+               if ($_mce_spawned_ref->{$_mce_sid}->pid() == $$);
          }
          else {
             $_mce_spawned_ref->{$_mce_sid}->shutdown()
@@ -408,9 +415,21 @@ sub _die_handler {
 
    shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
 
-   if (!defined $^S || $^S) {                             ## Perl state
-      my $_lmsg = Carp::longmess();
-      if ($_lmsg =~ /^[^\n]+\n\teval /) {                 ## In eval?
+   if (!defined $^S || $^S) {
+      if ( ($INC{'threads.pm'} && threads->tid() != 0) ||
+            $ENV{'PERL_IPERL_RUNNING'}
+      ) {
+         # thread env or running inside IPerl, check stack trace
+         my $_t = Carp::longmess(); $_t =~ s/\teval [^\n]+\n$//;
+
+         if ( $_t =~ /^(?:[^\n]+\n){1,7}\teval / ||
+              $_t =~ /\n\teval [^\n]+\n\t(?:eval|Try)/ )
+         {
+            CORE::die(@_);
+         }
+      }
+      else {
+         # normal env, trust $^S
          CORE::die(@_);
       }
    }
@@ -432,7 +451,11 @@ sub _die_handler {
 
    MCE::Signal->stop_and_exit('__DIE__');
 
-   CORE::exit;
+   if ($INC{'threads.pm'} && threads->can('exit')) {
+      threads->exit(255);
+   }
+
+   CORE::exit(255);
 }
 
 sub _warn_handler {
@@ -482,7 +505,7 @@ MCE::Signal - Temporary directory creation/cleanup and signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.600
+This document describes MCE::Signal version 1.605
 
 =head1 SYNOPSIS
 
@@ -583,14 +606,6 @@ L<MCE|MCE>
 =head1 AUTHOR
 
 Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
-
-=head1 LICENSE
-
-This program is free software; you can redistribute it and/or modify it
-under the terms of either: the GNU General Public License as published
-by the Free Software Foundation; or the Artistic License.
-
-See L<http://dev.perl.org/licenses/> for more information.
 
 =cut
 
