@@ -47,7 +47,7 @@ use MCE::Util qw( $LF );
 use MCE::Signal;
 use bytes;
 
-our $VERSION = '1.605';
+our $VERSION = '1.606';
 
 our ($MCE, $_que_read_size, $_que_template, %_valid_fields_new);
 my  ($_prev_mce, %_params_allowed_args, %_valid_fields_task);
@@ -1357,6 +1357,8 @@ sub exit {
 
    _croak('MCE::exit: method cannot be called by the manager process')
       unless ($self->{_wid});
+
+   MCE::Signal::stop_and_exit('__DIE__') unless ($self->{_running});
 
    _clear_session( $self->{_mce_sid} );
 

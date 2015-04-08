@@ -18,7 +18,7 @@ use Scalar::Util qw( looks_like_number );
 use MCE;
 use MCE::Queue;
 
-our $VERSION  = '1.605';
+our $VERSION  = '1.606';
 
 our @CARP_NOT = qw( MCE );
 
@@ -664,7 +664,7 @@ MCE::Stream - Parallel stream model for chaining multiple maps and greps
 
 =head1 VERSION
 
-This document describes MCE::Stream version 1.605
+This document describes MCE::Stream version 1.606
 
 =head1 SYNOPSIS
 

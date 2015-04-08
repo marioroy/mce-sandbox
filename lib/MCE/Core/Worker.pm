@@ -14,7 +14,7 @@ package MCE::Core::Worker;
 use strict;
 use warnings;
 
-our $VERSION = '1.605';
+our $VERSION = '1.606';
 
 ## Items below are folded into MCE.
 
@@ -358,6 +358,7 @@ sub _worker_do {
    @_ = ();
 
    ## Set options.
+   $self->{_running}    = 1;
    $self->{_abort_msg}  = $_params_ref->{_abort_msg};
    $self->{_run_mode}   = $_params_ref->{_run_mode};
    $self->{_single_dim} = $_params_ref->{_single_dim};
@@ -471,6 +472,8 @@ sub _worker_do {
    print {$_DAU_W_SOCK} $_task_id . $LF;
 
    flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+
+   $self->{_running} = 0;
 
    return;
 }
@@ -587,7 +590,22 @@ sub _worker_main {
       delete $self->{input_data} if ($_ref && $_ref ne 'SCALAR');
    }
 
-   ## Define DIE handler.
+   $self->{_task_id}  = (defined $_task_id ) ? $_task_id  : 0;
+   $self->{_task_wid} = (defined $_task_wid) ? $_task_wid : $_wid;
+   $self->{_task}     = $_task;
+   $self->{_wid}      = $_wid;
+   $self->{_running}  = 0;
+
+   ## Define exit pid and DIE handler.
+   my $_use_threads = (defined $_task->{use_threads})
+      ? $_task->{use_threads} : $self->{use_threads};
+
+   if ($INC{'threads.pm'} && $_use_threads) {
+      $self->{_exit_pid} = 'TID_' . threads->tid();
+   } else {
+      $self->{_exit_pid} = 'PID_' . $$;
+   }
+
    local $SIG{__DIE__} = sub {
       if (!defined $^S || $^S) {
          if ( ($INC{'threads.pm'} && threads->tid() != 0) ||
@@ -614,16 +632,6 @@ sub _worker_main {
       $self->exit(255, $_die_msg);
    };
 
-   ## Define status ID.
-   my $_use_threads = (defined $_task->{use_threads})
-      ? $_task->{use_threads} : $self->{use_threads};
-
-   if ($INC{'threads.pm'} && $_use_threads) {
-      $self->{_exit_pid} = 'TID_' . threads->tid();
-   } else {
-      $self->{_exit_pid} = 'PID_' . $$;
-   }
-
    ## Use options from user_tasks if defined.
    $self->{max_workers} = $_task->{max_workers} if ($_task->{max_workers});
    $self->{chunk_size}  = $_task->{chunk_size}  if ($_task->{chunk_size});
@@ -646,11 +654,6 @@ sub _worker_main {
    } else {
       $_chn = $self->{_chn} = $_wid % $self->{_data_channels} + 1;
    }
-
-   $self->{_task_id}  = (defined $_task_id ) ? $_task_id  : 0;
-   $self->{_task_wid} = (defined $_task_wid) ? $_task_wid : $_wid;
-   $self->{_task}     = $_task;
-   $self->{_wid}      = $_wid;
 
    ## Unset the need for channel locking if only worker on the channel.
    if ($self->{_init_total_workers} < DATA_CHANNELS * 2) {

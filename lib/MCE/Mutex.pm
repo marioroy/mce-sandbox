@@ -16,7 +16,7 @@ no warnings 'uninitialized';
 use MCE::Util qw( $LF );
 use bytes;
 
-our $VERSION = '1.605';
+our $VERSION = '1.606';
 
 sub DESTROY {
 
@@ -115,7 +115,7 @@ MCE::Mutex - Simple semaphore for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Mutex version 1.605
+This document describes MCE::Mutex version 1.606
 
 =head1 SYNOPSIS
 

@@ -21,7 +21,7 @@ use Scalar::Util qw( looks_like_number );
 use MCE::Util qw( $LF );
 use bytes;
 
-our $VERSION = '1.605';
+our $VERSION = '1.606';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -1668,7 +1668,7 @@ MCE::Queue - Hybrid (normal and priority) queues for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.605
+This document describes MCE::Queue version 1.606
 
 =head1 SYNOPSIS
 

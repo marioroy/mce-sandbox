@@ -15,7 +15,7 @@ package MCE::Core::Input::Generator;
 use strict;
 use warnings;
 
-our $VERSION = '1.605';
+our $VERSION = '1.606';
 
 ## Items below are folded into MCE.
 

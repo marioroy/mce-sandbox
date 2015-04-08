@@ -17,7 +17,7 @@ use Scalar::Util qw( looks_like_number );
 
 use MCE;
 
-our $VERSION  = '1.605';
+our $VERSION  = '1.606';
 
 our @CARP_NOT = qw( MCE );
 
@@ -448,7 +448,7 @@ MCE::Map - Parallel map model similar to the native map function
 
 =head1 VERSION
 
-This document describes MCE::Map version 1.605
+This document describes MCE::Map version 1.606
 
 =head1 SYNOPSIS
 
