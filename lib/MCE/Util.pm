@@ -15,7 +15,7 @@ use Socket qw( PF_UNIX PF_UNSPEC SOCK_STREAM );
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.606';
+our $VERSION = '1.608';
 
 my  $_is_winenv = ($^O eq 'cygwin' || $^O eq 'MSWin32') ? 1 : 0;
 our $LF = "\012";  Internals::SvREADONLY($LF, 1);
@@ -321,7 +321,7 @@ MCE::Util - Utility functions for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.606
+This document describes MCE::Util version 1.608
 
 =head1 SYNOPSIS
 

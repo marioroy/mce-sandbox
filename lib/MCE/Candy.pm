@@ -9,7 +9,7 @@ package MCE::Candy;
 use strict;
 use warnings;
 
-our $VERSION  = '1.606';
+our $VERSION  = '1.608';
 
 our @CARP_NOT = qw( MCE );
 
@@ -213,7 +213,7 @@ MCE::Candy - Sugar methods and output iterators for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Candy version 1.606
+This document describes MCE::Candy version 1.608
 
 =head1 DESCRIPTION
 

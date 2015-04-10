@@ -11,7 +11,7 @@ use warnings;
 
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
 
-our $VERSION = '1.606';
+our $VERSION = '1.608';
 
 no warnings 'threads';
 no warnings 'recursion';
@@ -323,7 +323,7 @@ MCE::Relay - Extends Many-Core Engine with relay capabilities
 
 =head1 VERSION
 
-This document describes MCE::Relay version 1.606
+This document describes MCE::Relay version 1.608
 
 =head1 SYNOPSIS
 

@@ -17,7 +17,7 @@ use Scalar::Util qw( looks_like_number );
 
 use MCE;
 
-our $VERSION  = '1.606';
+our $VERSION  = '1.608';
 
 our @CARP_NOT = qw( MCE );
 
@@ -373,7 +373,7 @@ MCE::Loop - Parallel loop model for building creative loops
 
 =head1 VERSION
 
-This document describes MCE::Loop version 1.606
+This document describes MCE::Loop version 1.608
 
 =head1 DESCRIPTION
 

@@ -15,7 +15,7 @@ use Time::HiRes qw( sleep time );
 use Fcntl qw( :flock O_RDONLY );
 use base qw( Exporter );
 
-our $VERSION = '1.606';
+our $VERSION = '1.608';
 
 our ($display_die_with_localtime, $display_warn_with_localtime);
 our ($main_proc_id, $prog_name, $tmp_dir);
@@ -24,6 +24,7 @@ BEGIN {
    $main_proc_id =  $$;
    $prog_name    =  $0;
    $prog_name    =~ s{^.*[\\/]}{}g;
+   $prog_name    =  'perl' if ($prog_name eq '-e');
 }
 
 our @EXPORT_OK = qw( $tmp_dir sys_cmd stop_and_exit );
@@ -505,7 +506,7 @@ MCE::Signal - Temporary directory creation/cleanup and signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.606
+This document describes MCE::Signal version 1.608
 
 =head1 SYNOPSIS
 
