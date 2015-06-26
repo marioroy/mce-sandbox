@@ -226,11 +226,8 @@ my $mce = MCE->new(
 
    user_func => sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
-
+      my ($start, $n_agg, $output_fd) = ($chunk_ref->[0], 0, 0);
       my ($limit, $low, $high, $output_fh);
-      my $start = $chunk_ref->[0];
-      my $output_fd = 0;
-      my $n_agg = 0;
 
       if ($run_mode == MODE_PRINT) {
          open $output_fh, ">", "$tmp_dir/$chunk_id" or

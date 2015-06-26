@@ -35,8 +35,9 @@ BEGIN {
 
 use Math::BigInt try => 'GMP';
 
-use Math::Prime::Util qw(
-   prime_precalc prime_memfree primes prime_count forprimes
+use Math::Prime::Util 0.51 qw(
+   prime_precalc prime_memfree prime_count print_primes sum_primes
+   primes forprimes
 );
 
 ## use bigint;
@@ -199,14 +200,14 @@ my $mce = MCE->new(
 
    user_func => sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
-
+      my ($start, $n_agg, $output_fd) = ($chunk_ref->[0], 0, 0);
       my ($limit, $low, $high, $output_fh);
-      my $start = $chunk_ref->[0];
-      my $n_agg = 0;
 
       if ($run_mode == MODE_PRINT) {
          open $output_fh, ">", "$tmp_dir/$chunk_id" or
             die "$prog_name: cannot open '$tmp_dir/$chunk_id' for writing\n";
+
+         $output_fd = fileno $output_fh;
       }
 
       $limit = ($max_number - $start <= $step_size)
@@ -221,11 +222,13 @@ my $mce = MCE->new(
             $n_agg += prime_count($low, $high);
          }
          elsif ($run_mode == MODE_SUM) {
-            forprimes { $n_agg += $_ } $low, $high;
+            # forprimes { $n_agg += $_ } $low, $high;
+            $n_agg += sum_primes($low, $high);
          }
          else {
-            my $p = primes($low, $high);
-            syswrite $output_fh, join("\n", @$p) . "\n";
+            # my $p = primes($low, $high);
+            # syswrite $output_fh, join("\n", @$p) . "\n";
+            print_primes($low, $high, $output_fd);
          }
 
          last if ($limit - $low < $sieve_size);

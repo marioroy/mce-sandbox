@@ -63,7 +63,7 @@ install depending on your environment.
   2. Crypt::Random::TESHA2  (Crypt-Random-TESHA2-0.01.tar.gz)
   3. Crypt::Random::Seed    (Crypt-Random-Seed-0.03.tar.gz)
   4. Bytes::Random::Secure  (Bytes-Random-Secure-0.28.tar.gz)
-  5. Math::Prime::Util      (Math-Prime-Util-0.41.tar.gz)
+  5. Math::Prime::Util      (Math-Prime-Util-0.51.tar.gz)
 ```
 
 ## Note for 32-bit Perl
