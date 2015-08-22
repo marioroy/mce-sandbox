@@ -84,48 +84,48 @@ quickly fill your disk. A suggestion is specifying both the FROM and NUMBER
 arguments. A later revision will have the option to write to a PDL file.
 
     NAME
-      algorithm3.pl -- count, sum, or generate prime numbers in order
+       algorithm3.pl -- count, sum, or generate prime numbers in order
 
     SYNOPISIS
-      algorithm3.pl [options] [[ FROM ] NUMBER ]
+       algorithm3.pl [options] [[ FROM ] NUMBER ]
 
     DESCRIPTION
-      The algorithm3.pl utility is a parallel sieve generator based off the
-      3rd sieve extension from Xuedong Luo (Algorithm3) [1].
+       The algorithm3.pl utility is a parallel sieve generator based off the
+       3rd sieve extension from Xuedong Luo (Algorithm3) [1].
 
-      It generates 50,847,534 primes in little time. Notice the file size for
-      primes.out. This will obviously consume lots of space. Running with 1e11
-      will require 45.5 GB. The upper limit for number is 2^64 - 1 - 6.
+       It generates 50,847,534 primes in little time. Notice the file size for
+       primes.out. This will obviously consume lots of space. Running with 1e11
+       will require 45.5 GB. The upper limit for number is 2^64 - 1 - 6.
 
-      algorithm3.pl 1e9 --print > primes.out   # file size 479 MB
+       algorithm3.pl 1e9 --print > primes.out   # file size 479 MB
 
-      algorithm3.pl 4294967296                 # default, count primes
-      203280221
+       algorithm3.pl 4294967296                 # default, count primes
+       203280221
 
-      algorithm3.pl 4294967296 --sum           # sum primes otherwise
-      425649736193687430
+       algorithm3.pl 4294967296 --sum           # sum primes otherwise
+       425649736193687430
 
-      The following options are available:
+       The following options are available:
 
-      --maxworkers=<val>   specify the number of workers (default auto)
-      --usethreads         spawn workers via threads if available (not fork)
-      --help,  -h          display this help and exit
-      --print, -p          print primes (ignored if sum is specified)
-      --quiet, -q          suppress progress including extra output
-      --sum,   -s          sum primes (maximum N allowed 29505444490)
+       --maxworkers=<val>   specify the number of workers (default auto)
+       --usethreads         spawn workers via threads if available (not fork)
+       --help,  -h          display this help and exit
+       --print, -p          print primes (ignored if sum is specified)
+       --quiet, -q          suppress progress including extra output
+       --sum,   -s          sum primes (maximum N allowed 29505444490)
 
     EXAMPLES
-      algorithm3.pl 17446744073000000000 17446744073709551609
-      algorithm3.pl --maxworkers=auto/2 1000000000
-      algorithm3.pl 22801763489 --sum
-      algorithm3.pl 1e5 3e5 --print
+       algorithm3.pl 17446744073000000000 17446744073709551609
+       algorithm3.pl --maxworkers=auto/2 1000000000
+       algorithm3.pl 22801763489 --sum
+       algorithm3.pl 1e5 3e5 --print
 
     EXIT STATUS
-      The algorithm3.pl utility exits with one of the following values:
+       The algorithm3.pl utility exits with one of the following values:
 
-      0    a prime was found
-      1    a prime was not found
-      >1   an error occurred
+       0    a prime was found
+       1    a prime was not found
+       >1   an error occurred
 
 ### Acknowledgements
 
