@@ -9,26 +9,24 @@ possibly missing in Perl 8 and 10, are required on the system.
 
 ### Content
 
-```
-  .Inline/           Scripts configure Inline::C to cache C objects here
+    .Inline/         Scripts configure Inline::C to cache C objects here
 
-  bin/
-     algorithm3.pl   Practical sieve based off Algorithm3 from Xuedong Luo [1]
-     primesieve.pl   Calls the primesieve.org C API for generating primes
-     primeutil.pl    Utilizes the Math::Prime::Util module for primes
+    bin/
+      algorithm3.pl  Practical sieve based off Algorithm3 from Xuedong Luo [1]
+      primesieve.pl  Calls the primesieve.org C API for generating primes
+      primeutil.pl   Utilizes the Math::Prime::Util module for primes
 
-  lib/
-     Sandbox.pm      Common code for the bin scripts
+    lib/
+      Sandbox.pm     Common code for the bin scripts
 
-  src/
-     algorithm3.c    C code for algorithm3.pl
-     bits.h          Utility functions for byte array
-     output.h        Fast printing of primes to a file descriptor
-     primesieve.c    C code for primesieve.pl
-     sandbox.h       Header file, includes bits.h, output.h, sprintull.h
-     sprintull.h     Fast base10 to string conversion
-     typemap         Typemap file for Inline::C
-```
+    src/
+      algorithm3.c   C code for algorithm3.pl
+      bits.h         Utility functions for byte array
+      output.h       Fast printing of primes to a file descriptor
+      primesieve.c   C code for primesieve.pl
+      sandbox.h      Header file, includes bits.h, output.h, sprintull.h
+      sprintull.h    Fast base10 to string conversion
+      typemap        Typemap file for Inline::C
 
 There is a one time delay when running algorithm3.pl or primesieve.pl. This
 is from Inline::C compiling relevant C files the very first time.
@@ -38,9 +36,9 @@ installed, e.g. Xcode/gcc, MS nmake/cc, dmake/gcc, or make/gcc. Some OS
 environments may need to update ExtUtils::MakeMaker for Inline::C to
 function properly, e.g Cygwin.
 
-I chose not to have many *.c files in order to have Inline::C do less checking
+I chose not to have many C files in order to have Inline::C do less checking
 at startup. Simply remove the .Inline directory after making changes to any
-*.h file before running.
+header files under the src directory.
 
 The primesieve.pl/.c and primeutil.pl examples are complementary additions.
 These have additional dependencies described below. Primesieve.c is small.
@@ -58,25 +56,21 @@ installation, acquire the necessary modules and install in the order shown.
 Extract the tarball and run perl Makefile.PL. Afterwards, make/dmake/nmake
 install depending on your environment.
 
-```
-  1. Math::Random::ISAAC    (Math-Random-ISAAC-1.004.tar.gz)
-  2. Crypt::Random::TESHA2  (Crypt-Random-TESHA2-0.01.tar.gz)
-  3. Crypt::Random::Seed    (Crypt-Random-Seed-0.03.tar.gz)
-  4. Bytes::Random::Secure  (Bytes-Random-Secure-0.28.tar.gz)
-  5. Math::Prime::Util      (Math-Prime-Util-0.51.tar.gz)
-```
+    Math::Random::ISAAC    (Math-Random-ISAAC-1.004.tar.gz)
+    Crypt::Random::TESHA2  (Crypt-Random-TESHA2-0.01.tar.gz)
+    Crypt::Random::Seed    (Crypt-Random-Seed-0.03.tar.gz)
+    Bytes::Random::Secure  (Bytes-Random-Secure-0.28.tar.gz)
+    Math::Prime::Util      (Math-Prime-Util-0.51.tar.gz)
 
 ### Note for 32-bit Perl
 
 The scripts support 64-bit numbers. Uncomment the "use bigint" line in the
-following files. This is not necessary if NUMBER is below 2^32.
+following files. This is not necessary for NUMBER below 2^32.
 
-```
-  1. bin/algorithm3.pl
-  2. bin/primesieve.pl
-  3. bin/primeutil.pl
-  4. lib/Sandbox.pm
-```
+    bin/algorithm3.pl
+    bin/primesieve.pl
+    bin/primeutil.pl
+    lib/Sandbox.pm
 
 ### Usage
 
@@ -89,51 +83,49 @@ printing of primes. Please be careful with the --print/-p options. It can
 quickly fill your disk. A suggestion is specifying both the FROM and NUMBER
 arguments. A later revision will have the option to write to a PDL file.
 
-```
-  NAME
-     algorithm3.pl -- count, sum, or generate prime numbers in order
+    NAME
+      algorithm3.pl -- count, sum, or generate prime numbers in order
 
-  SYNOPISIS
-     algorithm3.pl [options] [[ FROM ] NUMBER ]
+    SYNOPISIS
+      algorithm3.pl [options] [[ FROM ] NUMBER ]
 
-  DESCRIPTION
-     The algorithm3.pl utility is a parallel sieve generator based off the
-     3rd sieve extension from Xuedong Luo (Algorithm3) [1].
+    DESCRIPTION
+      The algorithm3.pl utility is a parallel sieve generator based off the
+      3rd sieve extension from Xuedong Luo (Algorithm3) [1].
 
-     It generates 50,847,534 primes in little time. Notice the file size for
-     primes.out. This will obviously consume lots of space. Running with 1e11
-     will require 45.5 GB. The upper limit for number is 2^64 - 1 - 6.
+      It generates 50,847,534 primes in little time. Notice the file size for
+      primes.out. This will obviously consume lots of space. Running with 1e11
+      will require 45.5 GB. The upper limit for number is 2^64 - 1 - 6.
 
-     algorithm3.pl 1e9 --print > primes.out   # file size 479 MB
+      algorithm3.pl 1e9 --print > primes.out   # file size 479 MB
 
-     algorithm3.pl 4294967296                 # default, count primes
-     203280221
+      algorithm3.pl 4294967296                 # default, count primes
+      203280221
 
-     algorithm3.pl 4294967296 --sum           # sum primes otherwise
-     425649736193687430
+      algorithm3.pl 4294967296 --sum           # sum primes otherwise
+      425649736193687430
 
-     The following options are available:
+      The following options are available:
 
-     --maxworkers=<val>   specify the number of workers (default auto)
-     --usethreads         spawn workers via threads if available (not fork)
-     --help,  -h          display this help and exit
-     --print, -p          print primes (ignored if sum is specified)
-     --quiet, -q          suppress progress including extra output
-     --sum,   -s          sum primes (maximum N allowed 29505444490)
+      --maxworkers=<val>   specify the number of workers (default auto)
+      --usethreads         spawn workers via threads if available (not fork)
+      --help,  -h          display this help and exit
+      --print, -p          print primes (ignored if sum is specified)
+      --quiet, -q          suppress progress including extra output
+      --sum,   -s          sum primes (maximum N allowed 29505444490)
 
-  EXAMPLES
-     algorithm3.pl 17446744073000000000 17446744073709551609
-     algorithm3.pl --maxworkers=auto/2 1000000000
-     algorithm3.pl 22801763489 --sum
-     algorithm3.pl 1e5 3e5 --print
+    EXAMPLES
+      algorithm3.pl 17446744073000000000 17446744073709551609
+      algorithm3.pl --maxworkers=auto/2 1000000000
+      algorithm3.pl 22801763489 --sum
+      algorithm3.pl 1e5 3e5 --print
 
-  EXIT STATUS
-     The algorithm3.pl utility exits with one of the following values:
+    EXIT STATUS
+      The algorithm3.pl utility exits with one of the following values:
 
-     0    a prime was found
-     1    a prime was not found
-     >1   an error occurred
-```
+      0    a prime was found
+      1    a prime was not found
+      >1   an error occurred
 
 ### Acknowledgements
 
@@ -159,91 +151,91 @@ with mce-sandbox is the segmented version of Algorithm3 below. My favorite
 statement is "k = 3 - k". The value alternates between 1 and 2 repeatedly.
 
 ```C
-  // Algorithm3 (non-segmented version) [1].
-  //
-  // Avoid all composites that have 2 or 3 as one of their prime
-  // factors (where i is odd).
-  //
-  // { 0, 5, 7, 11, 13, ... 3i + 2, 3(i + 1) + 1, ..., N }
-  //   0, 1, 2,  3,  4, ... list indices (0 is not used)
+// Algorithm3 (non-segmented version) [1].
+//
+// Avoid all composites that have 2 or 3 as one of their prime
+// factors (where i is odd).
+//
+// { 0, 5, 7, 11, 13, ... 3i + 2, 3(i + 1) + 1, ..., N }
+//   0, 1, 2,  3,  4, ... list indices (0 is not used)
 
-  // Compiling with gcc:
-  //   gcc -I../src -O2 practicalsieve.c -o practicalsieve
+// Compiling with gcc:
+//   gcc -I../src -O2 practicalsieve.c -o practicalsieve
 
-  #include <stdint.h>
-  #include <string.h>
-  #include <stdlib.h>
-  #include <stdio.h>
-  #include <math.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
 
-  #include "bits.h"
+#include "bits.h"
 
-  void practicalsieve(uint64_t limit)
-  {
-     int64_t  i, j, q = (int64_t) sqrt((double) limit) / 3;
-     uint64_t M = (uint64_t) limit / 3;
-     uint64_t c = 0, k = 1, t = 2, ij;
-     int64_t  mem_sz = (M + 2 + 7) / 8;
-     byte_t   *sieve;
+void practicalsieve(uint64_t limit)
+{
+   int64_t  i, j, q = (int64_t) sqrt((double) limit) / 3;
+   uint64_t M = (uint64_t) limit / 3;
+   uint64_t c = 0, k = 1, t = 2, ij;
+   int64_t  mem_sz = (M + 2 + 7) / 8;
+   byte_t   *sieve;
 
-     uint64_t count = (limit < 2) ? 0 : (limit < 3) ? 1 : 2;
+   uint64_t count = (limit < 2) ? 0 : (limit < 3) ? 1 : 2;
 
-     sieve = (byte_t *) malloc(mem_sz);
-     memset(sieve, 0xff, mem_sz);
-     CLEARBIT(sieve, 0);
+   sieve = (byte_t *) malloc(mem_sz);
+   memset(sieve, 0xff, mem_sz);
+   CLEARBIT(sieve, 0);
 
-     // unset bits > limit;
-     i = mem_sz * 8 - (M + 2);
+   // unset bits > limit;
+   i = mem_sz * 8 - (M + 2);
 
-     while (i) {
-        CLEARBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
-        i--;
-     }
+   while (i) {
+      CLEARBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
+      i--;
+   }
 
-     if (3 * (M + 1) + 1 > limit + (limit & 1))
-        CLEARBIT(sieve, M + 1);
-     if (3 * M + 2 > limit + (limit & 1))
-        CLEARBIT(sieve, M);
+   if (3 * (M + 1) + 1 > limit + (limit & 1))
+      CLEARBIT(sieve, M + 1);
+   if (3 * M + 2 > limit + (limit & 1))
+      CLEARBIT(sieve, M);
 
-     for (i = 1; i <= q; i++) {
-        k  = 3 - k, c = 4 * k * i + c, j = c;
-        ij = 2 * i * (3 - k) + 1, t = 4 * k + t;
+   for (i = 1; i <= q; i++) {
+      k  = 3 - k, c = 4 * k * i + c, j = c;
+      ij = 2 * i * (3 - k) + 1, t = 4 * k + t;
 
-        if (ISBITSET(sieve, i)) {
-           while (j <= M) {
-              CLEARBIT(sieve, j);
-              j += ij, ij = t - ij;
-           }
-        }
-     }
+      if (ISBITSET(sieve, i)) {
+         while (j <= M) {
+            CLEARBIT(sieve, j);
+            j += ij, ij = t - ij;
+         }
+      }
+   }
 
-     count += popcount(sieve, mem_sz);
+   count += popcount(sieve, mem_sz);
 
-     // for (i = 1; i <= M; i += 2) {
-     //    if (ISBITSET(sieve, i))
-     //       printf("%llu\n", 3 * i + 2);
-     //    if (ISBITSET(sieve, i + 1))
-     //       printf("%llu\n", 3 * (i + 1) + 1);
-     // }
+   // for (i = 1; i <= M; i += 2) {
+   //    if (ISBITSET(sieve, i))
+   //       printf("%llu\n", 3 * i + 2);
+   //    if (ISBITSET(sieve, i + 1))
+   //       printf("%llu\n", 3 * (i + 1) + 1);
+   // }
 
-     free((void *) sieve);
-     sieve = NULL;
+   free((void *) sieve);
+   sieve = NULL;
 
-     printf("%llu primes found.\n", count);
-  }
+   printf("%llu primes found.\n", count);
+}
 
-  int main(int argc, char** argv)
-  {
-     // count the primes below this number
-     uint64_t limit = 100000000;
+int main(int argc, char** argv)
+{
+   // count the primes below this number
+   uint64_t limit = 100000000;
 
-     if (argc >= 2)
-        limit = strtoull(argv[1], NULL, 10);
+   if (argc >= 2)
+      limit = strtoull(argv[1], NULL, 10);
 
-     practicalsieve(limit);
+   practicalsieve(limit);
 
-     return 0;
-  }
+   return 0;
+}
 ```
 
 ### References
