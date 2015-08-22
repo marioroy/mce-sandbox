@@ -1,4 +1,4 @@
-# Sandboxing with Perl + MCE + Inline::C
+## Sandboxing with Perl + MCE + Inline::C
 
 This is a journey with Perl + MCE + Inline::C. To make this interesting,
 the examples count, sum, or generate prime numbers in order.
@@ -7,7 +7,7 @@ The sandbox has the minimum required to run MCE + Inline::C. Both modules are
 pre-installed under the lib directory. ExtUtils::MakeMaker and Time::HiRes,
 possibly missing in Perl 8 and 10, are required on the system.
 
-## Content
+### Content
 
 ```
   .Inline/           Scripts configure Inline::C to cache C objects here
@@ -47,7 +47,7 @@ These have additional dependencies described below. Primesieve.c is small.
 It demonstrates the generation of primes coming from an external C API.
 Primeutil.pl is similar but from a Perl module instead.
 
-## Dependencies
+### Dependencies
 
 The primesieve.pl script requires the C API from primesieve.org. Change the
 base path from /usr/local in primesieve.pl (lines 179,180) if installed
@@ -66,7 +66,7 @@ install depending on your environment.
   5. Math::Prime::Util      (Math-Prime-Util-0.51.tar.gz)
 ```
 
-## Note for 32-bit Perl
+### Note for 32-bit Perl
 
 The scripts support 64-bit numbers. Uncomment the "use bigint" line in the
 following files. This is not necessary if NUMBER is below 2^32.
@@ -78,7 +78,7 @@ following files. This is not necessary if NUMBER is below 2^32.
   4. lib/Sandbox.pm
 ```
 
-## Usage
+### Usage
 
 The following usage is taken from algorithm3.pl. Both primesieve.pl and
 primeutil.pl have different values for the upper limit. The usage is
@@ -135,7 +135,7 @@ arguments. A later revision will have the option to write to a PDL file.
      >1   an error occurred
 ```
 
-## Acknowledgements
+### Acknowledgements
 
 This sandbox utilizes Inline::C and Parse::RecDescent. Both work reasonably
 well among many environments in which MCE runs on. Thank you for that.
@@ -152,7 +152,7 @@ Math::Prime::Util (Dana Jacobsen).
 I remembered Rocco Caputo during this time for a trick seen long ago in POE
 on exporting variables without having to require Exporter.
 
-## Algorithm3 (non-segmented)
+### Algorithm3 (non-segmented)
 
 Xuedong Luo inspired me to look at Math in a new light. The example included
 with mce-sandbox is the segmented version of Algorithm3 below. My favorite
@@ -246,7 +246,7 @@ statement is "k = 3 - k". The value alternates between 1 and 2 repeatedly.
   }
 ```
 
-## References
+### References
 
 1. ** Xuedong Luo.
    A practical sieve algorithm for finding prime numbers.
