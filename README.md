@@ -1,7 +1,7 @@
 ## Sandboxing with Perl + MCE + Inline::C
 
-This is a journey with Perl + MCE + Inline::C. To make this interesting,
-the examples count, sum, or generate prime numbers in order.
+This is a journey with Perl + MCE + Inline::C. To make this interesting, the
+examples count, sum, and generate prime numbers.
 
 The sandbox has the minimum required to run MCE + Inline::C. Both modules are
 pre-installed under the lib directory. ExtUtils::MakeMaker and Time::HiRes,
