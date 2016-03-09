@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Core::Input::Request - Array_ref and Glob_ref input reader.
+## Array_ref and Glob_ref input reader.
 ##
 ## This package provides the request chunk method used internally by the worker
 ## process. Distribution follows a bank-queuing model.
@@ -14,15 +14,15 @@ package MCE::Core::Input::Request;
 use strict;
 use warnings;
 
-our $VERSION = '1.608';
+our $VERSION = '1.700';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
+
+use bytes;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -51,6 +51,13 @@ sub _worker_request_chunk {
    my $_RS_FLG      = (!$_RS || $_RS ne $LF);
    my $_I_FLG       = (!$/ || $/ ne $LF);
    my $_wuf         = $self->{_wuf};
+
+   my ($_dat_ex, $_dat_un);
+
+   if ($_lock_chn) {
+      $_dat_ex = sub { 1 until sysread(  $_DAT_LOCK->{_r_sock}, my $_b, 1 ) };
+      $_dat_un = sub { 1 until syswrite( $_DAT_LOCK->{_w_sock}, '0' ) };
+   }
 
    my ($_chunk_id, $_len, $_output_tag);
    my ($_chop_len, $_chop_str, $_p);
@@ -88,12 +95,12 @@ sub _worker_request_chunk {
       {
          local $\ = undef if (defined $\); local $/ = $LF if ($_I_FLG);
 
-         flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
+         $_dat_ex->() if $_lock_chn;
          print {$_DAT_W_SOCK} $_output_tag . $LF . $_chn . $LF;
          chomp($_len = <$_DAU_W_SOCK>);
 
          unless ($_len) {
-            flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+            $_dat_un->() if $_lock_chn;
             return;
          }
 
@@ -107,7 +114,7 @@ sub _worker_request_chunk {
 
          read $_DAU_W_SOCK, $_, $_len, $_p;
 
-         flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+         $_dat_un->() if $_lock_chn;
       }
 
       ## Call user function.

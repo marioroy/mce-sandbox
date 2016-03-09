@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Signal - Temporary directory creation/cleanup and signal handling.
+## Temporary directory creation/cleanup and signal handling.
 ##
 ###############################################################################
 
@@ -9,23 +9,43 @@ package MCE::Signal;
 use strict;
 use warnings;
 
-use Carp ();
-use File::Path ();
-use Time::HiRes qw( sleep time );
-use Fcntl qw( :flock O_RDONLY );
-use base qw( Exporter );
+no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.608';
+our $VERSION = '1.700';
+
+## no critic (BuiltinFunctions::ProhibitStringyEval)
 
 our ($display_die_with_localtime, $display_warn_with_localtime);
 our ($main_proc_id, $prog_name, $tmp_dir);
+my  ($_has_threads);
+
+use Carp ();
 
 BEGIN {
    $main_proc_id =  $$;
+
    $prog_name    =  $0;
    $prog_name    =~ s{^.*[\\/]}{}g;
-   $prog_name    =  'perl' if ($prog_name eq '-e');
+   $prog_name    =  'perl' if ($prog_name eq '-e' || $prog_name eq '-');
+
+   if ($^O eq 'MSWin32' && !defined $threads::VERSION) {
+      local $@; local $SIG{__DIE__} = \&_NOOP;
+      eval 'use threads; use threads::shared';
+   }
+   elsif (defined $threads::VERSION) {
+      unless (defined $threads::shared::VERSION) {
+         local $@; local $SIG{__DIE__} = \&_NOOP;
+         eval 'use threads::shared';
+      }
+   }
+
+   $_has_threads = $INC{'threads/shared.pm'} ? 1 : 0;
 }
+
+use File::Path ();
+use Time::HiRes qw( sleep time );
+use Fcntl qw( :flock );
+use base qw( Exporter );
 
 our @EXPORT_OK = qw( $tmp_dir sys_cmd stop_and_exit );
 our %EXPORT_TAGS = (
@@ -33,25 +53,27 @@ our %EXPORT_TAGS = (
    tmp_dir => [ qw( $tmp_dir ) ]
 );
 
+sub _NOOP {}
+
 ###############################################################################
 ## ----------------------------------------------------------------------------
 ## Process import, export, & module arguments.
 ##
 ###############################################################################
 
-sub _croak { $\ = undef; goto &Carp::croak; }
-sub _usage { return _croak "MCE::Signal error: ($_[0]) is not a valid option"; }
-sub _flag  { return 1; }
+sub _croak { $\ = undef; goto &Carp::croak }
+sub _usage { _croak "MCE::Signal error: ($_[0]) is not a valid option" }
+sub _flag  { 1 }
 
 my $_is_MSWin32   = ($^O eq 'MSWin32') ? 1 : 0;
 my $_keep_tmp_dir = 0;
 my $_no_sigmsg    = 0;
 my $_no_kill9     = 0;
-my $_loaded;
+my $_imported;
 
 sub import {
 
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    my @_export_args = ();
    my $_no_setpgrp  = 0;
@@ -76,10 +98,6 @@ sub import {
    local $Exporter::ExportLevel = 1;
    Exporter::import($_class, @_export_args);
 
- # ## MCE no longer calls setpgrp by default as of MCE 1.405.
- # ## Sets the current process group for the current process.
- # setpgrp(0,0) if ($_no_setpgrp == 0 && $^O ne 'MSWin32');
-
    ## Sets the current process group for the current process.
    setpgrp(0,0) if ($_setpgrp == 1 && $^O ne 'MSWin32');
 
@@ -89,8 +107,7 @@ sub import {
       if ($_is_MSWin32) {
          $_tmp_dir_base = $ENV{TEMP} . '/mce';
          mkdir $_tmp_dir_base unless (-d $_tmp_dir_base);
-      }
-      else {
+      } else {
          $_tmp_dir_base = $ENV{TEMP};
       }
    }
@@ -99,8 +116,8 @@ sub import {
          ? '/dev/shm' : '/tmp';
    }
 
-   _croak("MCE::Signal::import: ($_tmp_dir_base) is not writeable")
-      unless (-w $_tmp_dir_base);
+   _croak("Error: MCE::Signal: ($_tmp_dir_base) is not writeable")
+      if (! exists $ENV{'MOBASTARTUPDIR'} && ! -w $_tmp_dir_base);
 
    ## Remove tainted'ness from $tmp_dir.
    ($tmp_dir) = "$_tmp_dir_base/$prog_name.$$.$_count" =~ /(.*)/;
@@ -183,10 +200,10 @@ sub sys_cmd {
 
    ## Kill the process group if command caught SIGINT or SIGQUIT.
 
-   kill('INT',  $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp))
+   CORE::kill('INT',  $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp))
       if $_sig_no == 2;
 
-   kill('QUIT', $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp))
+   CORE::kill('QUIT', $main_proc_id, ($_is_MSWin32 ? -$$ : -getpgrp))
       if $_sig_no == 3;
 
    return $_exit_status;
@@ -201,175 +218,156 @@ sub sys_cmd {
 ##
 ###############################################################################
 
-{
-   my $_handler_cnt = 0;
+my %_sig_name_lkup = map { $_ => 1 } qw(
+   __DIE__ __WARN__ HUP INT PIPE QUIT TERM CHLD XCPU XFSZ
+);
 
-   my %_sig_name_lkup = map { $_ => 1 } qw(
-      __DIE__ __WARN__ HUP INT PIPE QUIT TERM CHLD XCPU XFSZ
-   );
+my $_handler_cnt : shared = 0;
 
-   sub _NOOP { }
+sub stop_and_exit {
 
-   sub stop_and_exit {
+   shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
 
-      shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
+   my $_is_main_proc = ($$ == $main_proc_id);
+   my $_sig_name     = $_[0] || 0;
+   my $_exit_status  = $?;
+   my $_is_sig       = 0;
 
-      my $_sig_name        = $_[0] || 0;
-      my $_exit_status     = $?;
-      my $_is_sig          = 0;
-      my $_is_main_thread;
+   if (exists $_sig_name_lkup{$_sig_name}) {
+      $_exit_status     = $MCE::Signal::KILLED = $_is_sig = 1;
+      $SIG{$_sig_name}  = \&_NOOP;
+      $_mce_spawned_ref = undef;
+   }
+   else {
+      $_exit_status = $_sig_name if ($_sig_name =~ /^\d+$/);
+   }
 
-      if (exists $_sig_name_lkup{$_sig_name}) {
-         $_mce_spawned_ref = undef;
-         $SIG{$_sig_name}  = \&_NOOP;
-         $_exit_status     = $_is_sig = 1;
-      } else {
-         $_exit_status = $_sig_name if ($_sig_name ne '0');
-      }
+   $SIG{INT} = $SIG{__DIE__} = $SIG{__WARN__} = \&_NOOP;
 
-      if ($INC{'threads.pm'}) {
-         $_is_main_thread  = ($$ == $main_proc_id && threads->tid() == 0);
-      } else {
-         $_is_main_thread  = ($$ == $main_proc_id);
-      }
+   ## -------------------------------------------------------------------------
 
-      $SIG{INT} = \&_NOOP if ($_sig_name ne 'INT');
-      $SIG{__DIE__} = $SIG{__WARN__} = \&_NOOP;
+   ## For the main process.
+   if ($_is_main_proc) {
+      lock $_handler_cnt if $_has_threads;
 
-      ## ----------------------------------------------------------------------
+      if (++$_handler_cnt == 1) {
+         open my $_FH, '>>', "$tmp_dir/stopped";
+         close   $_FH;
 
-      ## For the main thread / manager process.
-      if ($_is_main_thread) {
+         local $\ = undef;
 
-         if (++$_handler_cnt == 1 && ! -e "$tmp_dir/stopped") {
-            open my $_FH, '>', "$tmp_dir/stopped"; close $_FH;
+         ## Display message and kill process group if signaled.
+         if ($_is_sig == 1) {
+            my $_err_msg = undef;
 
-            local $\ = undef;
-
-            ## Display message and kill process group if signaled.
-            if ($_is_sig == 1) {
-               my $_err_msg = undef;
-
-               if ($_sig_name eq 'XCPU') {
-                  $_err_msg = 'exceeded CPU time limit, exiting';
-               }
-               elsif ($_sig_name eq 'XFSZ') {
-                  $_err_msg = 'exceeded file size limit, exiting';
-               }
-               elsif ($_sig_name eq 'INT' && -f "$tmp_dir/died") {
-                  $_err_msg = 'caught signal (__DIE__), exiting';
-               }
-               elsif ($_sig_name eq '__DIE__') {
-                  $_err_msg = 'caught signal (__DIE__), exiting';
-               }
-               elsif ($_sig_name ne 'PIPE') {
-                  $_err_msg = "caught signal ($_sig_name), exiting";
-               }
-
-               ## Display error message.
-               if ($_err_msg && $_no_sigmsg == 0) {
-                  print {*STDERR} "\n## $prog_name: $_err_msg\n";
-               }
-
-               open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
-
-               ## Signal process group to terminate.
-               kill('INT', $_is_MSWin32 ? -$$ : -getpgrp);
-
-               ## Pause a bit.
-               if ($_sig_name ne 'PIPE') {
-                  sleep 0.065 for (1..3);
-               } else {
-                  sleep 0.015 for (1..2);
-               }
+            if ($_sig_name eq 'XCPU') {
+               $_err_msg  = 'exceeded CPU time limit, exiting';
+               $_sig_name = 'INT';
+            }
+            elsif ($_sig_name eq 'XFSZ') {
+               $_err_msg  = 'exceeded file size limit, exiting';
+               $_sig_name = 'INT';
+            }
+            elsif ($_sig_name eq 'INT' && -f "$tmp_dir/died") {
+               $_err_msg  = 'caught signal (__DIE__), exiting';
+            }
+            elsif ($_sig_name eq '__DIE__') {
+               $_err_msg  = 'caught signal (__DIE__), exiting';
+               $_sig_name = 'INT';
+            }
+            elsif ($_sig_name ne 'PIPE') {
+               $_err_msg  = "caught signal ($_sig_name), exiting";
             }
 
-            ## Remove temp directory.
-            if (defined $tmp_dir && $tmp_dir ne '' && -d $tmp_dir) {
-
-               if (defined $_mce_sess_dir_ref) {
-                  for my $_sess_dir (keys %{ $_mce_sess_dir_ref }) {
-                     File::Path::rmtree($_sess_dir);
-                     delete $_mce_sess_dir_ref->{$_sess_dir};
-                  }
-               }
-
-               if ($_keep_tmp_dir == 1) {
-                  print {*STDERR} "$prog_name: saved tmp_dir = $tmp_dir\n";
-               }
-               else {
-                  if ($tmp_dir ne '/tmp' && $tmp_dir ne '/var/tmp') {
-                     File::Path::rmtree($tmp_dir);
-                  }
-               }
-
-               $tmp_dir = undef;
+            if ($_err_msg && $_no_sigmsg == 0) {
+               print {*STDERR} "\n## $prog_name: $_err_msg\n";
             }
 
-            ## Signal process group to die.
-            if ($_is_sig == 1) {
-               if ($_sig_name ne 'PIPE' && $_no_sigmsg == 0) {
-                  print {*STDERR} "\n";
-               }
-               if ($_no_kill9 == 1 || $_sig_name eq 'PIPE') {
-                  kill('INT', $_is_MSWin32 ? -$$ : -getpgrp);
-               } else {
-                  kill('KILL', -$$, $main_proc_id);
-               }
+            open my $_FH, '>', "$tmp_dir/killed";
+            close   $_FH;
+
+            CORE::kill($_sig_name, $_is_MSWin32 ? -$$ : -getpgrp);
+
+            ## Pause a bit.
+            if ($_sig_name eq 'PIPE') {
+               sleep 0.015 for (1..2);
+            } else {
+               sleep 0.065 for (1..3);
             }
          }
+
+         ## Remove temp directory.
+         if (defined $tmp_dir && $tmp_dir ne '' && -d $tmp_dir) {
+            if (defined $_mce_sess_dir_ref) {
+               for my $_sess_dir (keys %{ $_mce_sess_dir_ref }) {
+                  File::Path::rmtree($_sess_dir);
+                  delete $_mce_sess_dir_ref->{$_sess_dir};
+               }
+            }
+            if ($_keep_tmp_dir == 1) {
+               print {*STDERR} "$prog_name: saved tmp_dir = $tmp_dir\n";
+            } elsif ($tmp_dir ne '/tmp' && $tmp_dir ne '/var/tmp') {
+               File::Path::rmtree($tmp_dir);
+            }
+            $tmp_dir = undef;
+         }
+
+         ## Signal process group to die.
+         if ($_is_sig == 1) {
+            if ($_sig_name eq 'PIPE' && $INC{'MCE/Hobo.pm'}) {
+               CORE::kill('QUIT', $_is_MSWin32 ? -$$ : -getpgrp);
+            }
+            if ($_sig_name ne 'PIPE' && $_no_sigmsg == 0) {
+               print {*STDERR} "\n";
+            }
+            ($_no_kill9 == 1 || $_sig_name eq 'PIPE')
+               ? CORE::kill('INT', $_is_MSWin32 ? -$$ : -getpgrp)
+               : CORE::kill('KILL', -$$, $main_proc_id);
+         }
       }
+   }
 
-      ## ----------------------------------------------------------------------
+   ## Otherwise, for child processes.
+   elsif ($_is_sig == 1 && -d $tmp_dir) {
+      if (++$_handler_cnt == 1) {
 
-      ## For child processes / threads.
-      if (!$_is_main_thread && $_is_sig == 1 && -d $tmp_dir) {
+         ## Obtain lock.
+         open my $CHILD_LOCK, '+>>', "$tmp_dir/child.lock";
+         flock $CHILD_LOCK, LOCK_EX;
+
+         ## Notify the main process that I've died.
+         if ($_sig_name eq '__DIE__' && ! -f "$tmp_dir/died") {
+            local $@; eval {
+               open my $_FH, '>>', "$tmp_dir/died";
+               close   $_FH;
+            };
+         }
 
          ## Signal process group to terminate.
-         if (++$_handler_cnt == 1) {
-
-            ## Obtain lock.
-            open my $CHILD_LOCK, '+>>', "$tmp_dir/child.lock";
-            flock $CHILD_LOCK, LOCK_EX;
-
-            ## Notify the main process that I've died.
-            if ($_sig_name eq '__DIE__' && ! -f "$tmp_dir/died") {
-               local $@; eval {
-                  open my $_FH, '>', "$tmp_dir/died"; close $_FH;
-               };
-            }
-
-            ## Signal process group to terminate.
-            if (! -f "$tmp_dir/killed" && ! -f "$tmp_dir/stopped") {
-               local $@; eval {
-                  open my $_FH, '>', "$tmp_dir/killed"; close $_FH;
-               };
-               if ($_sig_name eq 'PIPE') {
-                  kill('PIPE', $main_proc_id, -$$);
-               } else {
-                  kill('INT', $main_proc_id, -$$);
-               }
-            }
-
-            ## Release lock.
-            flock $CHILD_LOCK, LOCK_UN;
-            close $CHILD_LOCK;
+         if (! -f "$tmp_dir/killed" && ! -f "$tmp_dir/stopped") {
+            local $@; eval {
+               open my $_FH, '>>', "$tmp_dir/killed";
+               close   $_FH;
+            };
+            ($_sig_name eq 'PIPE')
+               ? CORE::kill('PIPE', $main_proc_id, -$$)
+               : CORE::kill('INT', $main_proc_id, -$$);
          }
+
+         ## Release lock.
+         flock $CHILD_LOCK, LOCK_UN;
+         close $CHILD_LOCK;
       }
-
-      ## ----------------------------------------------------------------------
-
-      ## Exit thread/process with status.
-      if ($_is_sig == 1 && $_no_kill9 == 0) {
-         sleep 0.065 for (1..6);
-      }
-
-      if ($INC{'threads.pm'} && threads->can('exit')) {
-         threads->exit($_exit_status);
-      }
-
-      CORE::exit($_exit_status);
    }
+
+   ## -------------------------------------------------------------------------
+
+   ## Exit with status.
+   if ($_is_sig == 1 && $_no_kill9 == 0) {
+      sleep 0.065 for (1..5);
+   }
+
+   CORE::exit($_exit_status);
 }
 
 ###############################################################################
@@ -384,19 +382,20 @@ sub _shutdown_mce {
    shift @_ if (defined $_[0] && $_[0] eq 'MCE::Signal');
    my $_exit_status = $_[0] || $?;
 
-   if (defined $_mce_spawned_ref) {
+   if (defined $_mce_spawned_ref && !$MCE::Signal::KILLED) {
       my $_tid = ($INC{'threads.pm'}) ? threads->tid() : '';
          $_tid = '' unless defined $_tid;
 
       for my $_mce_sid (keys %{ $_mce_spawned_ref }) {
          if ($_mce_spawned_ref->{$_mce_sid}->wid()) {
-
-            $_mce_spawned_ref->{$_mce_sid}->exit($_exit_status)
-               if ($_mce_spawned_ref->{$_mce_sid}->pid() == $$);
+            if ($_mce_spawned_ref->{$_mce_sid}->pid() == $$) {
+               $_mce_spawned_ref->{$_mce_sid}->exit($_exit_status);
+            }
          }
          else {
-            $_mce_spawned_ref->{$_mce_sid}->shutdown()
-               if ($_mce_sid =~ /\A$$\.$_tid\./);
+            if ($_mce_sid =~ /\A$$\.$_tid\./) {
+               $_mce_spawned_ref->{$_mce_sid}->shutdown();
+            }
          }
 
          delete $_mce_spawned_ref->{$_mce_sid};
@@ -422,7 +421,6 @@ sub _die_handler {
       ) {
          # thread env or running inside IPerl, check stack trace
          my $_t = Carp::longmess(); $_t =~ s/\teval [^\n]+\n$//;
-
          if ( $_t =~ /^(?:[^\n]+\n){1,7}\teval / ||
               $_t =~ /\n\teval [^\n]+\n\t(?:eval|Try)/ )
          {
@@ -451,12 +449,6 @@ sub _die_handler {
    }
 
    MCE::Signal->stop_and_exit('__DIE__');
-
-   if ($INC{'threads.pm'} && threads->can('exit')) {
-      threads->exit(255);
-   }
-
-   CORE::exit(255);
 }
 
 sub _warn_handler {
@@ -506,14 +498,28 @@ MCE::Signal - Temporary directory creation/cleanup and signal handling
 
 =head1 VERSION
 
-This document describes MCE::Signal version 1.608
+This document describes MCE::Signal version 1.700
 
 =head1 SYNOPSIS
 
- use MCE::Signal qw( [-keep_tmp_dir] [-use_dev_shm] );
+ ## Creates tmp_dir under $ENV{TEMP} if defined, otherwise /tmp.
 
- use MCE;   ## MCE loads MCE::Signal when not present.
-            ## Include MCE::Signal first for options to take effect.
+ use MCE::Signal;
+
+ ## Attempts to create tmp_dir under /dev/shm if writable.
+
+ use MCE::Signal qw( -use_dev_shm );
+
+ ## Keeps tmp_dir after the script terminates.
+
+ use MCE::Signal qw( -keep_tmp_dir );
+ use MCE::Signal qw( -use_dev_shm -keep_tmp_dir );
+
+ ## MCE loads MCE::Signal by default when not present.
+ ## Therefore, load MCE::Signal first for options to take effect.
+
+ use MCE::Signal qw( -keep_tmp_dir -use_dev_shm );
+ use MCE;
 
 =head1 DESCRIPTION
 
@@ -538,7 +544,7 @@ As of MCE 1.405, MCE::Signal no longer calls setpgrp by default. Pass the
  use MCE::Signal qw(-setpgrp);   ## Not necessary for MCE 1.512 and above
  use MCE;
 
-The following are available arguments and their meanings.
+The following are available options and their meanings.
 
  -keep_tmp_dir     - The temporary directory is not removed during exiting
                      A message is displayed with the location afterwards
@@ -561,6 +567,9 @@ The following are available arguments and their meanings.
 
 Nothing is exported by default. Exportable are 1 variable and 2 subroutines.
 
+ use MCE::Signal qw( $tmp_dir stop_and_exit sys_cmd );
+ use MCE::Signal qw( :all );
+
  $tmp_dir          - Path to the temporary directory.
  stop_and_exit     - Described below
  sys_cmd           - Described below
@@ -568,10 +577,10 @@ Nothing is exported by default. Exportable are 1 variable and 2 subroutines.
 =head2 stop_and_exit ( [ $exit_status | $signal ] )
 
 Stops execution, removes temp directory, and exits the entire application.
-Pass 'TERM' to terminate a spawned or running MCE state.
+Pass 'INT' to terminate a spawned or running MCE session.
 
  MCE::Signal::stop_and_exit(1);
- MCE::Signal::stop_and_exit('TERM');
+ MCE::Signal::stop_and_exit('INT');
 
 =head2 sys_cmd ( $command )
 
@@ -587,22 +596,9 @@ Perl script. For this reason, sys_cmd was added to MCE::Signal.
 
  my $exit_status = sys_cmd($command);
 
-=head1 EXAMPLES
-
- ## Creates tmp_dir under $ENV{TEMP} if defined, otherwise /tmp
- use MCE::Signal;
- use MCE::Signal qw( :all );
-
- ## Attempt to create tmp_dir under /dev/shm if writable
- use MCE::Signal qw( -use_dev_shm );
-
- ## Keep tmp_dir after script terminates
- use MCE::Signal qw( -keep_tmp_dir );
- use MCE::Signal qw( -use_dev_shm -keep_tmp_dir );
-
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

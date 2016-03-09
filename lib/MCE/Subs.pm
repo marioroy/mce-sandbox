@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Subs - Exports functions mapped directly to MCE methods.
+## Exports functions mapped directly to MCE methods.
 ##
 ###############################################################################
 
@@ -9,13 +9,15 @@ package MCE::Subs;
 use strict;
 use warnings;
 
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
+
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
 
 use MCE;
 use MCE::Relay;
-
-our $VERSION = '1.608';
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -23,11 +25,11 @@ our $VERSION = '1.608';
 ##
 ###############################################################################
 
-my $_loaded;
+my $_imported;
 
 sub import {
 
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    my $_g_flg = 0; my $_m_flg = 0; my $_w_flg = 0;
    my $_flag = sub { 1 }; my $_package = caller;
@@ -40,7 +42,7 @@ sub import {
       $_m_flg = $_flag->() and next if ( $_arg eq ':manager' );
       $_w_flg = $_flag->() and next if ( $_arg eq ':worker' );
 
-      _croak("MCE::Subs::import: ($_argument) is not a valid module argument");
+      _croak("Error: ($_argument) invalid module option");
    }
 
    $_m_flg = $_w_flg = 1 if ($_m_flg + $_w_flg == 0);
@@ -99,6 +101,7 @@ sub mce_thaw        (@) { return $MCE::MCE->{thaw}(@_); }
 
 sub mce_chunk_id    ( ) { return $MCE::MCE->chunk_id(); }
 sub mce_chunk_size  ( ) { return $MCE::MCE->chunk_size(); }
+sub mce_max_retries ( ) { return $MCE::MCE->max_retries(); }
 sub mce_max_workers ( ) { return $MCE::MCE->max_workers(); }
 sub mce_pid         ( ) { return $MCE::MCE->pid(); }
 sub mce_sess_dir    ( ) { return $MCE::MCE->sess_dir(); }
@@ -172,6 +175,7 @@ sub _export_subs {
    if ($_g_flg) {
       *{ $_package . '::mce_chunk_id'    } = \&mce_chunk_id;
       *{ $_package . '::mce_chunk_size'  } = \&mce_chunk_size;
+      *{ $_package . '::mce_max_retries' } = \&mce_max_retries;
       *{ $_package . '::mce_max_workers' } = \&mce_max_workers;
       *{ $_package . '::mce_pid'         } = \&mce_pid;
       *{ $_package . '::mce_sess_dir'    } = \&mce_sess_dir;
@@ -202,7 +206,7 @@ MCE::Subs - Exports functions mapped directly to MCE methods
 
 =head1 VERSION
 
-This document describes MCE::Subs version 1.608
+This document describes MCE::Subs version 1.700
 
 =head1 SYNOPSIS
 
@@ -271,119 +275,121 @@ comma after the glob reference or file handle.
 
 =head1 FUNCTIONS for the MANAGER PROCESS via ( :manager )
 
-MCE methods are described in L<MCE::Core|MCE::Core>.
+MCE methods are described in L<MCE::Core>.
 
 =over 3
 
-=item mce_abort
+=item * mce_abort
 
-=item mce_forchunk
+=item * mce_forchunk
 
-=item mce_foreach
+=item * mce_foreach
 
-=item mce_forseq
+=item * mce_forseq
 
-=item mce_freeze
+=item * mce_freeze
 
-=item mce_process
+=item * mce_process
 
-=item mce_relay_final
+=item * mce_relay_final
 
-=item mce_restart_worker
+=item * mce_restart_worker
 
-=item mce_run
+=item * mce_run
 
-=item mce_print
+=item * mce_print
 
-=item mce_printf
+=item * mce_printf
 
-=item mce_say
+=item * mce_say
 
-=item mce_send
+=item * mce_send
 
-=item mce_shutdown
+=item * mce_shutdown
 
-=item mce_spawn
+=item * mce_spawn
 
-=item mce_status
+=item * mce_status
 
-=item mce_thaw
+=item * mce_thaw
 
 =back
 
 =head1 FUNCTIONS for MCE WORKERS via ( :worker )
 
-MCE methods are described in L<MCE::Core|MCE::Core>.
+MCE methods are described in L<MCE::Core>.
 
 =over 3
 
-=item mce_abort
+=item * mce_abort
 
-=item mce_do
+=item * mce_do
 
-=item mce_exit
+=item * mce_exit
 
-=item mce_freeze
+=item * mce_freeze
 
-=item mce_gather
+=item * mce_gather
 
-=item mce_last
+=item * mce_last
 
-=item mce_next
+=item * mce_next
 
-=item mce_print
+=item * mce_print
 
-=item mce_printf
+=item * mce_printf
 
-=item mce_relay
+=item * mce_relay
 
-=item mce_relay_recv
+=item * mce_relay_recv
 
-=item mce_say
+=item * mce_say
 
-=item mce_sendto
+=item * mce_sendto
 
-=item mce_sync
+=item * mce_sync
 
-=item mce_thaw
+=item * mce_thaw
 
-=item mce_yield
+=item * mce_yield
 
 =back
 
 =head1 GETTERS for MCE ATTRIBUTES via ( :getter )
 
-MCE methods are described in L<MCE::Core|MCE::Core>.
+MCE methods are described in L<MCE::Core>.
 
 =over 3
 
-=item mce_chunk_id
+=item * mce_chunk_id
 
-=item mce_chunk_size
+=item * mce_chunk_size
 
-=item mce_max_workers
+=item * mce_max_retries
 
-=item mce_pid
+=item * mce_max_workers
 
-=item mce_sess_dir
+=item * mce_pid
 
-=item mce_task_id
+=item * mce_sess_dir
 
-=item mce_task_name
+=item * mce_task_id
 
-=item mce_task_wid
+=item * mce_task_name
 
-=item mce_tmp_dir
+=item * mce_task_wid
 
-=item mce_user_args
+=item * mce_tmp_dir
 
-=item mce_wid
+=item * mce_user_args
+
+=item * mce_wid
 
 =back
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

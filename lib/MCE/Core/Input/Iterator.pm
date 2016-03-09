@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Core::Input::Iterator - Iterator reader.
+## Iterator reader.
 ##
 ## This package, used interally by the worker process, provides support for
 ## user specified iterators assigned to input_data.
@@ -14,15 +14,15 @@ package MCE::Core::Input::Iterator;
 use strict;
 use warnings;
 
-our $VERSION = '1.608';
+our $VERSION = '1.700';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
+
+use bytes;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -48,6 +48,13 @@ sub _worker_user_iterator {
    my $_I_FLG       = (!$/ || $/ ne $LF);
    my $_wuf         = $self->{_wuf};
 
+   my ($_dat_ex, $_dat_un);
+
+   if ($_lock_chn) {
+      $_dat_ex = sub { 1 until sysread(  $_DAT_LOCK->{_r_sock}, my $_b, 1 ) };
+      $_dat_un = sub { 1 until syswrite( $_DAT_LOCK->{_w_sock}, '0' ) };
+   }
+
    my ($_chunk_id, $_len, $_is_ref);
 
    ## -------------------------------------------------------------------------
@@ -68,12 +75,12 @@ sub _worker_user_iterator {
       {
          local $\ = undef if (defined $\); local $/ = $LF if ($_I_FLG);
 
-         flock $_DAT_LOCK, LOCK_EX if ($_lock_chn);
+         $_dat_ex->() if $_lock_chn;
          print {$_DAT_W_SOCK} OUTPUT_U_ITR . $LF . $_chn . $LF;
          chomp($_len = <$_DAU_W_SOCK>);
 
          if ($_len < 0) {
-            flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+            $_dat_un->() if $_lock_chn;
             return;
          }
 
@@ -82,7 +89,7 @@ sub _worker_user_iterator {
          chomp($_chunk_id = <$_DAU_W_SOCK>);
          read $_DAU_W_SOCK, $_, $_len;
 
-         flock $_DAT_LOCK, LOCK_UN if ($_lock_chn);
+         $_dat_un->() if $_lock_chn;
       }
 
       ## Call user function.

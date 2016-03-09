@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Util - Utility functions for Many-Core Engine.
+## Utility functions.
 ##
 ###############################################################################
 
@@ -9,15 +9,20 @@ package MCE::Util;
 use strict;
 use warnings;
 
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
+
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 
-use Socket qw( PF_UNIX PF_UNSPEC SOCK_STREAM );
+use Socket qw( PF_UNIX PF_UNSPEC SOCK_STREAM SOL_SOCKET SO_SNDBUF SO_RCVBUF );
+use Time::HiRes qw( sleep );
 use base qw( Exporter );
 use bytes;
 
-our $VERSION = '1.608';
+my  $_is_winenv  = ($^O eq 'MSWin32' || $^O eq 'cygwin') ? 1 : 0;
+my  $_zero_bytes = "\x00\x00\x00\x00";
 
-my  $_is_winenv = ($^O eq 'cygwin' || $^O eq 'MSWin32') ? 1 : 0;
 our $LF = "\012";  Internals::SvREADONLY($LF, 1);
 
 our @EXPORT_OK = qw( $LF get_ncpu );
@@ -126,16 +131,40 @@ sub get_ncpu {
 ##
 ###############################################################################
 
-sub _destroy_sockets {
+sub _destroy_pipes {
 
    my ($_obj, @_params) = @_;
-
    local ($!, $?);
 
    for my $_p (@_params) {
       if (defined $_obj->{$_p}) {
          if (ref $_obj->{$_p} eq 'ARRAY') {
             for my $_i (0 .. @{ $_obj->{$_p} } - 1) {
+               next unless (defined $_obj->{$_p}->[$_i]);
+               close $_obj->{$_p}->[$_i];
+               undef $_obj->{$_p}->[$_i];
+            }
+         }
+         else {
+            close $_obj->{$_p};
+         }
+         undef $_obj->{$_p};
+      }
+   }
+
+   return;
+}
+
+sub _destroy_socks {
+
+   my ($_obj, @_params) = @_;
+   local ($!, $?);
+
+   for my $_p (@_params) {
+      if (defined $_obj->{$_p}) {
+         if (ref $_obj->{$_p} eq 'ARRAY') {
+            for my $_i (0 .. @{ $_obj->{$_p} } - 1) {
+               next unless (defined $_obj->{$_p}->[$_i]);
                ## an empty socket may not close immediately in Windows/Cygwin
                syswrite $_obj->{$_p}->[$_i], '0' if ($_is_winenv); # hack
                CORE::shutdown $_obj->{$_p}->[$_i], 2;
@@ -155,38 +184,103 @@ sub _destroy_sockets {
    return;
 }
 
-sub _make_socket_pair {
+sub _pipe_pair {
 
    my ($_obj, $_r_sock, $_w_sock, $_i) = @_;
+   my $_hndl; local ($|, $!);
 
-   local $!; my $_old_hndl;
+   # Doing $_obj->{$_r_sock}->autoflush(1) adds ~ 5% additional memory
+   # consumption from having to load IO::Handle.
+
+   if (defined $_i) {
+      pipe($_obj->{$_r_sock}->[$_i], $_obj->{$_w_sock}->[$_i])
+         or die "pipe: $!\n";
+
+      $_hndl = select $_obj->{$_r_sock}->[$_i]; $| = 1; # autoflush
+               select $_obj->{$_w_sock}->[$_i]; $| = 1;
+   }
+   else {
+      pipe($_obj->{$_r_sock}, $_obj->{$_w_sock})
+         or die "pipe: $!\n";
+
+      $_hndl = select $_obj->{$_r_sock}; $| = 1; # ditto
+               select $_obj->{$_w_sock}; $| = 1;
+   }
+
+   select $_hndl;
+
+   return;
+}
+
+sub _sock_pair {
+
+   my ($_obj, $_r_sock, $_w_sock, $_i, $_size) = @_;
+   my $_hndl; local ($|, $!);
+
+   $_size = 16384 unless defined $_size;
+   # Ditto on not calling autoflush(1).
 
    if (defined $_i) {
       socketpair( $_obj->{$_r_sock}->[$_i], $_obj->{$_w_sock}->[$_i],
          PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
 
-      binmode $_obj->{$_r_sock}->[$_i];
-      binmode $_obj->{$_w_sock}->[$_i];
+      if ($^O ne 'aix' && $^O ne 'linux') {
+         setsockopt($_obj->{$_r_sock}->[$_i], SOL_SOCKET, SO_SNDBUF, int $_size);
+         setsockopt($_obj->{$_r_sock}->[$_i], SOL_SOCKET, SO_RCVBUF, int $_size);
+         setsockopt($_obj->{$_w_sock}->[$_i], SOL_SOCKET, SO_SNDBUF, int $_size);
+         setsockopt($_obj->{$_w_sock}->[$_i], SOL_SOCKET, SO_RCVBUF, int $_size);
+      }
 
-      ## Autoflush handles.
-      $_old_hndl = select $_obj->{$_r_sock}->[$_i]; $| = 1;
-                   select $_obj->{$_w_sock}->[$_i]; $| = 1;
+      $_hndl = select $_obj->{$_r_sock}->[$_i]; $| = 1; # autoflush
+               select $_obj->{$_w_sock}->[$_i]; $| = 1;
    }
    else {
       socketpair( $_obj->{$_r_sock}, $_obj->{$_w_sock},
          PF_UNIX, SOCK_STREAM, PF_UNSPEC ) or die "socketpair: $!\n";
 
-      binmode $_obj->{$_r_sock};
-      binmode $_obj->{$_w_sock};
+      if ($^O ne 'aix' && $^O ne 'linux') {
+         setsockopt($_obj->{$_r_sock}, SOL_SOCKET, SO_SNDBUF, int $_size);
+         setsockopt($_obj->{$_r_sock}, SOL_SOCKET, SO_RCVBUF, int $_size);
+         setsockopt($_obj->{$_w_sock}, SOL_SOCKET, SO_SNDBUF, int $_size);
+         setsockopt($_obj->{$_w_sock}, SOL_SOCKET, SO_RCVBUF, int $_size);
+      }
 
-      ## Autoflush handles.
-      $_old_hndl = select $_obj->{$_r_sock}; $| = 1;
-                   select $_obj->{$_w_sock}; $| = 1;
+      $_hndl = select $_obj->{$_r_sock}; $| = 1; # ditto
+               select $_obj->{$_w_sock}; $| = 1;
    }
 
-   select $_old_hndl;
+   select $_hndl;
 
    return;
+}
+
+sub _sock_ready {
+
+   return if (
+      !defined $_[1] && !$INC{'MCE/Hobo.pm'} && defined $MCE::VERSION
+   );
+
+   my ($_val_bytes, $_socket, $_timeout) = ("\x00\x00\x00\x00", @_);
+   my $_ptr_bytes = unpack('I', pack('P', $_val_bytes));
+
+   if ($_timeout) {
+      $_timeout += time();
+      while (1) {
+         ioctl($_socket, 0x4004667f, $_ptr_bytes);  # MSWin32 FIONREAD
+       # return '' if unpack('I', $_val_bytes);     # unpack isn't needed here
+         return '' if $_val_bytes ne $_zero_bytes;  # this completes 2x faster
+         return 1  if time() > $_timeout;
+         sleep 0.045;
+      }
+   }
+   else {
+      my $_count = 0;
+      while (1) {
+         ioctl($_socket, 0x4004667f, $_ptr_bytes);  # Ditto
+         return if $_val_bytes ne $_zero_bytes;
+         $_count = 0, sleep 0.008 if ++$_count > 1618;
+      }
+   }
 }
 
 sub _parse_max_workers {
@@ -240,6 +334,18 @@ sub _parse_chunk_size {
       if ( (defined $_params && ref $_params->{input_data} eq 'CODE') ||
            (defined $_input_data && ref $_input_data eq 'CODE')
       ) {
+         ## Iterators may optionally use chunk_size to determine how much
+         ## to return per iteration. The default is 1 for MCE Models, same
+         ## as for the Core API. The user_func receives an array_ref
+         ## regardless if 1 or higher.
+         ##
+         ## sub make_iter {
+         ##    ...
+         ##    return sub {
+         ##       my ($chunk_size) = @_;
+         ##       ...
+         ##    };
+         ## }
          return 1;
       }
 
@@ -317,11 +423,11 @@ __END__
 
 =head1 NAME
 
-MCE::Util - Utility functions for Many-Core Engine
+MCE::Util - Utility functions
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.608
+This document describes MCE::Util version 1.700
 
 =head1 SYNOPSIS
 
@@ -375,11 +481,11 @@ In summary:
 =head1 ACKNOWLEDGEMENTS
 
 The portable code for detecting the number of processors was adopted from
-L<Test::Smoke::SysInfo|Test::Smoke::SysInfo>.
+L<Test::Smoke::SysInfo>.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

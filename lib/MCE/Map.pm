@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Map - Parallel map model similar to the native map function.
+## Parallel map model similar to the native map function.
 ##
 ###############################################################################
 
@@ -9,15 +9,17 @@ package MCE::Map;
 use strict;
 use warnings;
 
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
+
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
 
 use Scalar::Util qw( looks_like_number );
-
-use MCE;
-
-our $VERSION  = '1.608';
+use Storable ();
+use MCE::Signal;
 
 our @CARP_NOT = qw( MCE );
 
@@ -27,49 +29,42 @@ our @CARP_NOT = qw( MCE );
 ##
 ###############################################################################
 
-my $MAX_WORKERS = 'auto';
-my $CHUNK_SIZE  = 'auto';
+my ($MAX_WORKERS, $CHUNK_SIZE) = ('auto', 'auto');
 
-my ($_MCE, $_loaded); my ($_params, $_prev_c); my $_tag = 'MCE::Map';
+my $TMP_DIR = $MCE::Signal::tmp_dir;
+my $FREEZE  = \&Storable::freeze;
+my $THAW    = \&Storable::thaw;
+
+my ($_MCE, $_imported); my ($_params, $_prev_c); my $_tag = 'MCE::Map';
 
 sub import {
-
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    ## Process module arguments.
    while (my $_argument = shift) {
       my $_arg = lc $_argument;
 
-      $MAX_WORKERS = shift and next if ( $_arg eq 'max_workers' );
-      $CHUNK_SIZE  = shift and next if ( $_arg eq 'chunk_size' );
-
-      $MCE::FREEZE = $MCE::MCE->{freeze} = shift and next
-         if ( $_arg eq 'freeze' );
-      $MCE::THAW = $MCE::MCE->{thaw} = shift and next
-         if ( $_arg eq 'thaw' );
+      $MAX_WORKERS = shift, next if ( $_arg eq 'max_workers' );
+      $CHUNK_SIZE  = shift, next if ( $_arg eq 'chunk_size' );
+      $FREEZE      = shift, next if ( $_arg eq 'freeze' );
+      $THAW        = shift, next if ( $_arg eq 'thaw' );
+      $TMP_DIR     = shift, next if ( $_arg eq 'tmp_dir' );
 
       if ( $_arg eq 'sereal' ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
-            unless ($@) {
-               $MCE::FREEZE = $MCE::MCE->{freeze} = \&encode_sereal;
-               $MCE::THAW = $MCE::MCE->{thaw} = \&decode_sereal;
-            }
+            $FREEZE = \&encode_sereal, $THAW = \&decode_sereal unless $@;
          }
          next;
       }
 
-      if ( $_arg eq 'tmp_dir' ) {
-         $MCE::TMP_DIR = $MCE::MCE->{tmp_dir} = shift;
-         my $_e1 = 'is not a directory or does not exist';
-         my $_e2 = 'is not writeable';
-         _croak($_tag."::import: ($MCE::TMP_DIR) $_e1") unless -d $MCE::TMP_DIR;
-         _croak($_tag."::import: ($MCE::TMP_DIR) $_e2") unless -w $MCE::TMP_DIR;
-         next;
-      }
-
-      _croak($_tag."::import: ($_argument) is not a valid module argument");
+      _croak("Error: ($_argument) invalid module option");
    }
+
+   ## Preload essential modules.
+   require MCE; MCE->import(
+      freeze => $FREEZE, thaw => $THAW, tmp_dir => $TMP_DIR
+   );
 
    $MAX_WORKERS = MCE::Util::_parse_max_workers($MAX_WORKERS);
    _validate_number($MAX_WORKERS, 'MAX_WORKERS');
@@ -123,9 +118,7 @@ sub init (@) {
    shift if (defined $_[0] && $_[0] eq 'MCE::Map');
 
    if (MCE->wid) {
-      @_ = (); _croak(
-         "$_tag: function cannot be called by the worker process"
-      );
+      @_ = (); _croak("$_tag: (init) is not allowed by the worker process");
    }
 
    finish(); $_params = (ref $_[0] eq 'HASH') ? shift : { @_ };
@@ -138,7 +131,7 @@ sub init (@) {
 sub finish () {
 
    if (defined $_MCE && $_MCE->{_spawned}) {
-      MCE::_save_state; $_MCE->shutdown(); MCE::_restore_state;
+      MCE::_save_state(); $_MCE->shutdown(); MCE::_restore_state();
    }
 
    $_prev_c = $_total_chunks = undef; undef %_tmp;
@@ -248,9 +241,7 @@ sub run (&@) {
    my $_code = shift;   $_total_chunks = 0; undef %_tmp;
 
    if (MCE->wid) {
-      @_ = (); _croak(
-         "$_tag: function cannot be called by the worker process"
-      );
+      @_ = (); _croak("$_tag: (run) is not allowed by the worker process");
    }
 
    my $_input_data; my $_max_workers = $MAX_WORKERS; my $_r = ref $_[0];
@@ -284,7 +275,7 @@ sub run (&@) {
       }
    }
 
-   MCE::_save_state;
+   MCE::_save_state();
 
    ## -------------------------------------------------------------------------
 
@@ -304,9 +295,10 @@ sub run (&@) {
 
                if (ref $_chunk_ref eq 'SCALAR') {
                   local $/ = $_mce->{RS} if defined $_mce->{RS};
-                  open my  $_MEM_FH, '<', $_chunk_ref;
-                  while ( <$_MEM_FH> ) { push @_a, &{ $_code }; }
-                  close    $_MEM_FH;
+                  open my $_MEM_FH, '<', $_chunk_ref;
+                  binmode $_MEM_FH, ':raw';
+                  while (<$_MEM_FH>) { push @_a, &{ $_code }; }
+                  close   $_MEM_FH;
                }
                else {
                   if (ref $_chunk_ref) {
@@ -323,9 +315,10 @@ sub run (&@) {
 
                if (ref $_chunk_ref eq 'SCALAR') {
                   local $/ = $_mce->{RS} if defined $_mce->{RS};
-                  open my  $_MEM_FH, '<', $_chunk_ref;
-                  while ( <$_MEM_FH> ) { $_cnt++; &{ $_code }; }
-                  close    $_MEM_FH;
+                  open my $_MEM_FH, '<', $_chunk_ref;
+                  binmode $_MEM_FH, ':raw';
+                  while (<$_MEM_FH>) { $_cnt++; &{ $_code }; }
+                  close   $_MEM_FH;
                }
                else {
                   if (ref $_chunk_ref) {
@@ -360,8 +353,8 @@ sub run (&@) {
 
    my $_cnt = 0; my $_wantarray = wantarray;
 
-   $_MCE->{use_slurpio} = ($_chunk_size > MCE::MAX_RECS_SIZE) ? 1 : 0;
-   $_MCE->{user_args} = [ $_wantarray ];
+   $_MCE->{use_slurpio} = ($_chunk_size > &MCE::MAX_RECS_SIZE) ? 1 : 0;
+   $_MCE->{user_args}   = [ $_wantarray ];
 
    $_MCE->{gather} = $_wantarray
       ? \&_gather : sub { $_cnt += $_[0]; return; };
@@ -388,13 +381,16 @@ sub run (&@) {
       }
    }
 
-   MCE::_restore_state;
+   MCE::_restore_state();
 
    if (exists $_MCE->{_rla_return}) {
       $MCE::MCE->{_rla_return} = delete $_MCE->{_rla_return};
    }
 
-   finish() if ($^S);   ## shutdown if in eval state
+   if ($^S) {
+      ## shutdown if in eval state
+      MCE::_save_state(); $_MCE->shutdown(); MCE::_restore_state();
+   }
 
    if ($_wantarray) {
       return map { @{ $_ } } delete @_tmp{ 1 .. $_total_chunks };
@@ -448,7 +444,7 @@ MCE::Map - Parallel map model similar to the native map function
 
 =head1 VERSION
 
-This document describes MCE::Map version 1.608
+This document describes MCE::Map version 1.700
 
 =head1 SYNOPSIS
 
@@ -502,10 +498,9 @@ otherwise -1.
 
    my @m3 = mce_map_s { calc } 1, 1000000;                ## 0.270 secs
 
-Although this document is about MCE::Map, the L<MCE::Stream|MCE::Stream>
-module can write results immediately without waiting for all chunks to
-complete. This is made possible by passing the reference to an array
-(in this case @m4 and @m5).
+Although this document is about MCE::Map, the L<MCE::Stream> module can write
+results immediately without waiting for all chunks to complete. This is made
+possible by passing the reference to an array (in this case @m4 and @m5).
 
    use MCE::Stream;
 
@@ -526,28 +521,24 @@ complete. This is made possible by passing the reference to an array
 
 =head1 OVERRIDING DEFAULTS
 
-The following list 5 options which may be overridden when loading the module.
+The following list options which may be overridden when loading the module.
 
    use Sereal qw( encode_sereal decode_sereal );
    use CBOR::XS qw( encode_cbor decode_cbor );
    use JSON::XS qw( encode_json decode_json );
 
    use MCE::Map
-         max_workers => 4,               ## Default 'auto'
-         chunk_size => 100,              ## Default 'auto'
-         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
-         freeze => \&encode_sereal,      ## \&Storable::freeze
-         thaw => \&decode_sereal         ## \&Storable::thaw
+         max_workers => 4,                ## Default 'auto'
+         chunk_size => 100,               ## Default 'auto'
+         tmp_dir => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,       ## \&Storable::freeze
+         thaw => \&decode_sereal          ## \&Storable::thaw
    ;
 
-There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise defaults to Storable for
-serialization.
+There is a simpler way to enable Sereal. The following will attempt to use
+Sereal if available, otherwise defaults to Storable for serialization.
 
    use MCE::Map Sereal => 1;
-
-   ## Serialization is by the Sereal module if available.
-   my @m2 = mce_map { $_ * $_ } 1..10000;
 
 =head1 CUSTOMIZING MCE
 
@@ -609,7 +600,7 @@ specified, is ignored due to being used internally by the module.
 =item mce_map { code } iterator
 
 An iterator reference can by specified for input_data. Iterators are described
-under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+under "SYNTAX for INPUT_DATA" at L<MCE::Core>.
 
    my @a = mce_map { $_ * 2 } make_iterator(10, 30, 2);
 
@@ -678,7 +669,7 @@ longer needed.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

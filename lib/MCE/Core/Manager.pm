@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Core::Manager - Core methods for the manager process.
+## Core methods for the manager process.
 ##
 ## This package provides the loop and relevant methods used internally by the
 ## manager process.
@@ -14,17 +14,15 @@ package MCE::Core::Manager;
 use strict;
 use warnings;
 
-## no critic (TestingAndDebugging::ProhibitNoStrict)
+our $VERSION = '1.700';
 
-our $VERSION = '1.608';
+## no critic (TestingAndDebugging::ProhibitNoStrict)
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
 
 use bytes;
 
@@ -74,8 +72,8 @@ sub _output_loop {
    @_ = ();
 
    my (
-      $_aborted, $_eof_flag, $_syn_flag, %_sendto_fhs, $_want_id,
-      $_callback, $_chunk_id, $_chunk_size, $_fd, $_file, $_flush_file,
+      $_aborted, $_eof_flag, $_max_retries, $_syn_flag, %_sendto_fhs,
+      $_cb, $_chunk_id, $_chunk_size, $_fd, $_file, $_flush_file, $_wa,
       @_is_c_ref, @_is_h_ref, @_is_q_ref, $_on_post_exit, $_on_post_run,
       $_has_user_tasks, $_sess_dir, $_task_id, $_user_error, $_user_output,
       $_input_size, $_offset_pos, $_single_dim, @_gather, $_cs_one_flag,
@@ -87,7 +85,7 @@ sub _output_loop {
    ## -------------------------------------------------------------------------
    ## Callback return.
 
-   my $_cb_ret_a = sub {                          ## CBK return array
+   my $_cb_ret_a = sub {                          # CBK return array
 
       my $_buf = $self->{freeze}($_[0]);
          $_len = length $_buf; local $\ = undef if (defined $\);
@@ -102,7 +100,7 @@ sub _output_loop {
       return;
    };
 
-   my $_cb_ret_r = sub {                          ## CBK return reference
+   my $_cb_ret_r = sub {                          # CBK return reference
 
       my $_buf = $self->{freeze}($_[0]);
          $_len = length $_buf; local $\ = undef if (defined $\);
@@ -117,7 +115,7 @@ sub _output_loop {
       return;
    };
 
-   my $_cb_ret_s = sub {                          ## CBK return scalar
+   my $_cb_ret_s = sub {                          # CBK return scalar
 
       $_len = (defined $_[0]) ? length $_[0] : -1;
       local $\ = undef if (defined $\);
@@ -137,12 +135,12 @@ sub _output_loop {
 
    my %_core_output_function = (
 
-      OUTPUT_W_ABT.$LF => sub {                   ## Worker has aborted
+      OUTPUT_W_ABT.$LF => sub {                   # Worker has aborted
          $_aborted = 1;
          return;
       },
 
-      OUTPUT_W_DNE.$LF => sub {                   ## Worker has completed
+      OUTPUT_W_DNE.$LF => sub {                   # Worker has completed
          chomp($_task_id = <$_DAU_R_SOCK>);
          $self->{_total_running} -= 1;
 
@@ -156,7 +154,7 @@ sub _output_loop {
 
          if ($_task_id == 0 && defined $_syn_flag && $_sync_cnt) {
             if ($_sync_cnt == $_total_running) {
-               syswrite $_BSB_W_SOCK, $LF for (1 .. $_total_running);
+               for (1 .. $_total_running) { 1 until syswrite $_BSB_W_SOCK, $LF }
                undef $_syn_flag;
             }
          }
@@ -168,7 +166,7 @@ sub _output_loop {
 
       ## ----------------------------------------------------------------------
 
-      OUTPUT_W_EXT.$LF => sub {                   ## Worker has exited
+      OUTPUT_W_EXT.$LF => sub {                   # Worker has exited
          chomp($_task_id = <$_DAU_R_SOCK>);
 
          $self->{_total_exited}  += 1;
@@ -186,24 +184,30 @@ sub _output_loop {
 
          if ($_task_id == 0 && defined $_syn_flag && $_sync_cnt) {
             if ($_sync_cnt == $_total_running) {
-               syswrite $_BSB_W_SOCK, $LF for (1 .. $_total_running);
+               for (1 .. $_total_running) { 1 until syswrite $_BSB_W_SOCK, $LF }
                undef $_syn_flag;
             }
          }
 
-         my $_exit_msg = '';
+         my ($_exit_msg, $_retry_buf) = ('', '');
 
-         chomp($_exit_wid    = <$_DAU_R_SOCK>);
-         chomp($_exit_pid    = <$_DAU_R_SOCK>);
-         chomp($_exit_status = <$_DAU_R_SOCK>);
-         chomp($_exit_id     = <$_DAU_R_SOCK>);
+         chomp($_exit_wid    = <$_DAU_R_SOCK>),
+         chomp($_exit_pid    = <$_DAU_R_SOCK>),
+         chomp($_exit_status = <$_DAU_R_SOCK>),
+         chomp($_exit_id     = <$_DAU_R_SOCK>),
          chomp($_len         = <$_DAU_R_SOCK>);
 
          read($_DAU_R_SOCK, $_exit_msg, $_len) if ($_len);
 
+         chomp($_len = <$_DAU_R_SOCK>);
+
+         read($_DAU_R_SOCK, $_retry_buf, $_len) if ($_len);
+
          if (abs($_exit_status) > abs($self->{_wrk_status})) {
             $self->{_wrk_status} = $_exit_status;
          }
+
+         print {$_DAU_R_SOCK} $LF;
 
          ## Reap child/thread. Note: Win32 uses negative PIDs.
 
@@ -235,10 +239,23 @@ sub _output_loop {
          if (defined $_on_post_exit) {
             $self->{_exited_wid} = $_exit_wid;
 
-            $_on_post_exit->($self, {
-               wid => $_exit_wid, pid => $_exit_pid, status => $_exit_status,
-               msg => $_exit_msg, id  => $_exit_id
-            });
+            if (length($_retry_buf)) {
+               $self->{_retry} = $self->{thaw}($_retry_buf);
+               my $_retry_cnt  = $_max_retries - $self->{_retry}[2] - 1;
+
+               $_on_post_exit->($self, {
+                  wid => $_exit_wid, pid => $_exit_pid, status => $_exit_status,
+                  msg => $_exit_msg, id  => $_exit_id
+               }, $_retry_cnt);
+
+               delete $self->{_retry};
+            }
+            else {
+               $_on_post_exit->($self, {
+                  wid => $_exit_wid, pid => $_exit_pid, status => $_exit_status,
+                  msg => $_exit_msg, id  => $_exit_id
+               }, $_max_retries || 0 );
+            }
 
             delete $self->{_exited_wid};
          }
@@ -256,7 +273,7 @@ sub _output_loop {
 
       ## ----------------------------------------------------------------------
 
-      OUTPUT_A_ARY.$LF => sub {                   ## Array << Array
+      OUTPUT_A_ARY.$LF => sub {                   # Array << Array
          my $_buf;
 
          if ($_offset_pos >= $_input_size || $_aborted) {
@@ -295,7 +312,7 @@ sub _output_loop {
          return;
       },
 
-      OUTPUT_S_GLB.$LF => sub {                   ## Scalar << Glob FH
+      OUTPUT_S_GLB.$LF => sub {                   # Scalar << Glob FH
          my $_buf = '';
 
          ## The logic below honors ('Ctrl/Z' in Windows, 'Ctrl/D' in Unix)
@@ -357,7 +374,7 @@ sub _output_loop {
          return;
       },
 
-      OUTPUT_U_ITR.$LF => sub {                   ## User << Iterator
+      OUTPUT_U_ITR.$LF => sub {                   # User << Iterator
          my $_buf;
 
          if ($_aborted) {
@@ -405,77 +422,78 @@ sub _output_loop {
 
       ## ----------------------------------------------------------------------
 
-      OUTPUT_A_CBK.$LF => sub {                   ## Callback w/ multiple args
+      OUTPUT_A_CBK.$LF => sub {                   # Callback w/ multiple args
          my ($_buf, $_data_ref);
 
-         chomp($_want_id  = <$_DAU_R_SOCK>);
-         chomp($_callback = <$_DAU_R_SOCK>);
-         chomp($_len      = <$_DAU_R_SOCK>);
-         read $_DAU_R_SOCK, $_buf, $_len;
+         chomp($_wa  = <$_DAU_R_SOCK>),
+         chomp($_cb  = <$_DAU_R_SOCK>),
+         chomp($_len = <$_DAU_R_SOCK>);
 
+         read $_DAU_R_SOCK, $_buf, $_len;
          $_data_ref = $self->{thaw}($_buf); undef $_buf;
 
          local $\ = $_O_SEP if ($_O_FLG); local $/ = $_I_SEP if ($_I_FLG);
          no strict 'refs';
 
-         if ($_want_id == WANTS_UNDEF) {
-            $_callback->(@{ $_data_ref });
+         if ($_wa == WANTS_UNDEF) {
+            $_cb->(@{ $_data_ref });
          }
-         elsif ($_want_id == WANTS_ARRAY) {
-            my @_ret_a = $_callback->(@{ $_data_ref });
+         elsif ($_wa == WANTS_ARRAY) {
+            my @_ret_a = $_cb->(@{ $_data_ref });
             $_cb_ret_a->(\@_ret_a);
          }
          else {
-            my  $_ret_s = $_callback->(@{ $_data_ref });
+            my  $_ret_s = $_cb->(@{ $_data_ref });
             ref $_ret_s ? $_cb_ret_r->($_ret_s) : $_cb_ret_s->($_ret_s);
          }
 
          return;
       },
 
-      OUTPUT_S_CBK.$LF => sub {                   ## Callback w/ 1 scalar arg
+      OUTPUT_S_CBK.$LF => sub {                   # Callback w/ 1 scalar arg
          my $_buf;
 
-         chomp($_want_id  = <$_DAU_R_SOCK>);
-         chomp($_callback = <$_DAU_R_SOCK>);
-         chomp($_len      = <$_DAU_R_SOCK>);
+         chomp($_wa  = <$_DAU_R_SOCK>),
+         chomp($_cb  = <$_DAU_R_SOCK>),
+         chomp($_len = <$_DAU_R_SOCK>);
+
          read $_DAU_R_SOCK, $_buf, $_len;
 
          local $\ = $_O_SEP if ($_O_FLG); local $/ = $_I_SEP if ($_I_FLG);
          no strict 'refs';
 
-         if ($_want_id == WANTS_UNDEF) {
-            $_callback->($_buf);
+         if ($_wa == WANTS_UNDEF) {
+            $_cb->($_buf);
          }
-         elsif ($_want_id == WANTS_ARRAY) {
-            my @_ret_a = $_callback->($_buf);
+         elsif ($_wa == WANTS_ARRAY) {
+            my @_ret_a = $_cb->($_buf);
             $_cb_ret_a->(\@_ret_a);
          }
          else {
-            my  $_ret_s = $_callback->($_buf);
+            my  $_ret_s = $_cb->($_buf);
             ref $_ret_s ? $_cb_ret_r->($_ret_s) : $_cb_ret_s->($_ret_s);
          }
 
          return;
       },
 
-      OUTPUT_N_CBK.$LF => sub {                   ## Callback w/ no args
+      OUTPUT_N_CBK.$LF => sub {                   # Callback w/ no args
 
-         chomp($_want_id  = <$_DAU_R_SOCK>);
-         chomp($_callback = <$_DAU_R_SOCK>);
+         chomp($_wa = <$_DAU_R_SOCK>),
+         chomp($_cb = <$_DAU_R_SOCK>);
 
          local $\ = $_O_SEP if ($_O_FLG); local $/ = $_I_SEP if ($_I_FLG);
          no strict 'refs';
 
-         if ($_want_id == WANTS_UNDEF) {
-            $_callback->();
+         if ($_wa == WANTS_UNDEF) {
+            $_cb->();
          }
-         elsif ($_want_id == WANTS_ARRAY) {
-            my @_ret_a = $_callback->();
+         elsif ($_wa == WANTS_ARRAY) {
+            my @_ret_a = $_cb->();
             $_cb_ret_a->(\@_ret_a);
          }
          else {
-            my  $_ret_s = $_callback->();
+            my  $_ret_s = $_cb->();
             ref $_ret_s ? $_cb_ret_r->($_ret_s) : $_cb_ret_s->($_ret_s);
          }
 
@@ -484,11 +502,12 @@ sub _output_loop {
 
       ## ----------------------------------------------------------------------
 
-      OUTPUT_A_GTR.$LF => sub {                   ## Gather w/ multiple args
+      OUTPUT_A_GTR.$LF => sub {                   # Gather array/ref
          my $_buf;
 
-         chomp($_task_id = <$_DAU_R_SOCK>);
+         chomp($_task_id = <$_DAU_R_SOCK>),
          chomp($_len     = <$_DAU_R_SOCK>);
+
          read $_DAU_R_SOCK, $_buf, $_len;
 
          if ($_is_c_ref[$_task_id]) {
@@ -513,36 +532,12 @@ sub _output_loop {
          return;
       },
 
-      OUTPUT_R_GTR.$LF => sub {                   ## Gather w/ 1 reference arg
-         my $_buf;
-
-         chomp($_task_id = <$_DAU_R_SOCK>);
-         chomp($_len     = <$_DAU_R_SOCK>);
-         read $_DAU_R_SOCK, $_buf, $_len;
-
-         if ($_is_c_ref[$_task_id]) {
-            local $_ = $self->{thaw}($_buf);
-            $_gather[$_task_id]->($_);
-         }
-         elsif ($_is_h_ref[$_task_id]) {
-            local $_ = $self->{thaw}($_buf);
-            $_gather[$_task_id]->{$_} = undef;
-         }
-         elsif ($_is_q_ref[$_task_id]) {
-            $_gather[$_task_id]->enqueue($self->{thaw}($_buf));
-         }
-         else {
-            push @{ $_gather[$_task_id] }, $self->{thaw}($_buf);
-         }
-
-         return;
-      },
-
-      OUTPUT_S_GTR.$LF => sub {                   ## Gather w/ 1 scalar arg
+      OUTPUT_S_GTR.$LF => sub {                   # Gather scalar
          local $_;
 
-         chomp($_task_id = <$_DAU_R_SOCK>);
+         chomp($_task_id = <$_DAU_R_SOCK>),
          chomp($_len     = <$_DAU_R_SOCK>);
+
          read $_DAU_R_SOCK, $_, $_len if ($_len >= 0);
 
          if ($_is_c_ref[$_task_id]) {
@@ -563,7 +558,7 @@ sub _output_loop {
 
       ## ----------------------------------------------------------------------
 
-      OUTPUT_O_SND.$LF => sub {                   ## Send >> STDOUT
+      OUTPUT_O_SND.$LF => sub {                   # Send >> STDOUT
          my $_buf;
 
          chomp($_len = <$_DAU_R_SOCK>);
@@ -578,7 +573,7 @@ sub _output_loop {
          return;
       },
 
-      OUTPUT_E_SND.$LF => sub {                   ## Send >> STDERR
+      OUTPUT_E_SND.$LF => sub {                   # Send >> STDERR
          my $_buf;
 
          chomp($_len = <$_DAU_R_SOCK>);
@@ -593,11 +588,12 @@ sub _output_loop {
          return;
       },
 
-      OUTPUT_F_SND.$LF => sub {                   ## Send >> File
+      OUTPUT_F_SND.$LF => sub {                   # Send >> File
          my ($_buf, $_OUT_FILE);
 
-         chomp($_file = <$_DAU_R_SOCK>);
+         chomp($_file = <$_DAU_R_SOCK>),
          chomp($_len  = <$_DAU_R_SOCK>);
+
          read $_DAU_R_SOCK, $_buf, $_len;
 
          unless (exists $_sendto_fhs{$_file}) {
@@ -608,7 +604,7 @@ sub _output_loop {
 
             ## Select new FH, turn on autoflush, restore the old FH.
             if ($_flush_file) {
-               select((select($_sendto_fhs{$_file}), $| = 1)[0]);
+               local $|; select((select($_sendto_fhs{$_file}), $| = 1)[0]);
             }
          }
 
@@ -618,11 +614,12 @@ sub _output_loop {
          return;
       },
 
-      OUTPUT_D_SND.$LF => sub {                   ## Send >> File descriptor
+      OUTPUT_D_SND.$LF => sub {                   # Send >> File descriptor
          my ($_buf, $_OUT_FILE);
 
-         chomp($_fd  = <$_DAU_R_SOCK>);
+         chomp($_fd  = <$_DAU_R_SOCK>),
          chomp($_len = <$_DAU_R_SOCK>);
+
          read $_DAU_R_SOCK, $_buf, $_len;
 
          unless (exists $_sendto_fhs{$_fd}) {
@@ -636,7 +633,7 @@ sub _output_loop {
 
             ## Select new FH, turn on autoflush, restore the old FH.
             if ($_flush_file) {
-               select((select($_sendto_fhs{$_fd}), $| = 1)[0]);
+               local $|; select((select($_sendto_fhs{$_fd}), $| = 1)[0]);
             }
          }
 
@@ -648,7 +645,7 @@ sub _output_loop {
 
       ## ----------------------------------------------------------------------
 
-      OUTPUT_B_SYN.$LF => sub {                   ## Barrier sync - begin
+      OUTPUT_B_SYN.$LF => sub {                   # Barrier sync - begin
 
          if (!defined $_sync_cnt || $_sync_cnt == 0) {
             $_syn_flag = 1;
@@ -660,21 +657,21 @@ sub _output_loop {
             : $self->{_total_running};
 
          if (++$_sync_cnt == $_total_running) {
-            syswrite $_BSB_W_SOCK, $LF for (1 .. $_total_running);
+            for (1 .. $_total_running) { 1 until syswrite $_BSB_W_SOCK, $LF }
             undef $_syn_flag;
          }
 
          return;
       },
 
-      OUTPUT_E_SYN.$LF => sub {                   ## Barrier sync - end
+      OUTPUT_E_SYN.$LF => sub {                   # Barrier sync - end
 
          if (--$_sync_cnt == 0) {
             my $_total_running = ($_has_user_tasks)
                ? $self->{_task}->[0]->{_total_running}
                : $self->{_total_running};
 
-            syswrite $_BSE_W_SOCK, $LF for (1 .. $_total_running);
+            for (1 .. $_total_running) { 1 until syswrite $_BSE_W_SOCK, $LF }
          }
 
          return;
@@ -690,6 +687,7 @@ sub _output_loop {
    $_cs_one_flag = ($self->{chunk_size} == 1) ? 1 : 0;
    $_aborted = $_chunk_id = $_eof_flag = 0;
 
+   $_max_retries  = $self->{max_retries};
    $_on_post_exit = $self->{on_post_exit};
    $_on_post_run  = $self->{on_post_run};
    $_chunk_size   = $self->{chunk_size};
@@ -698,6 +696,19 @@ sub _output_loop {
    $_user_error   = $self->{user_error};
    $_single_dim   = $self->{_single_dim};
    $_sess_dir     = $self->{_sess_dir};
+
+   if ($_max_retries && !$_on_post_exit) {
+      $_on_post_exit = sub {
+         my ($self, $_e, $_retry_cnt) = @_;
+         my ($_cnt, $_msg) = ($_retry_cnt + 1, "Error: Chunk $_e->{id} failed");
+
+         ($_retry_cnt < $_max_retries)
+            ? print {*STDERR} "$_msg, retrying chunk attempt #${_cnt}\n"
+            : print {*STDERR} "$_msg\n";
+
+         $self->restart_worker;
+      };
+   }
 
    if ($_has_user_tasks && $self->{user_tasks}->[0]->{chunk_size}) {
       $_chunk_size = $self->{user_tasks}->[0]->{chunk_size};
@@ -736,6 +747,7 @@ sub _output_loop {
    }
 
    ## Set STDOUT/STDERR to user parameters.
+
    if (defined $self->{stdout_file}) {
       open $_MCE_STDOUT, '>>', $self->{stdout_file}
          or die $self->{stdout_file} . ": $!\n";
@@ -758,20 +770,23 @@ sub _output_loop {
 
    ## Make MCE_STDOUT the default handle.
    ## Flush STDERR/STDOUT handles if requested.
-   my $_old_hndl = select $_MCE_STDOUT;
-   $| = 1 if ($self->{flush_stdout});
 
+   my $_old_hndl = select $_MCE_STDOUT;
+
+   if ($self->{flush_stdout}) {
+      local $|; select((select($_MCE_STDOUT), $| = 1)[0]);
+   }
    if ($self->{flush_stderr}) {
-      select $_MCE_STDERR; $| = 1;
-      select $_MCE_STDOUT;
+      local $|; select((select($_MCE_STDERR), $| = 1)[0]);
    }
 
    ## -------------------------------------------------------------------------
+
    ## Output event loop.
 
    my $_func; my $_channels = $self->{_dat_r_sock};
 
-   $_BSB_W_SOCK = $self->{_bsb_w_sock};        ## For IPC
+   $_BSB_W_SOCK = $self->{_bsb_w_sock};
    $_BSE_W_SOCK = $self->{_bse_w_sock};
    $_DAT_R_SOCK = $self->{_dat_r_sock}->[0];
 
@@ -784,36 +799,81 @@ sub _output_loop {
    $_I_FLG  = (!$_I_SEP || $_I_SEP ne $LF) ? 1 : 0;
 
    ## Call module's loop_begin routine for modules plugged into MCE.
+
    for my $_p (@{ $_plugin_loop_begin }) {
       $_p->($self, \$_DAU_R_SOCK);
    }
 
-   ## Call on hash function. Exit loop when workers have completed.
-   while (1) {
-      $_func = <$_DAT_R_SOCK>;
-      next unless (defined $_func);
+   ## Wait on requests *with* timeout capability. Exit loop when all workers
+   ## have completed processing or exited prematurely.
 
-      $_DAU_R_SOCK = $_channels->[ <$_DAT_R_SOCK> ];
+   if ($self->{loop_timeout} && $self->{_pids} && $^O ne 'MSWin32') {
+      my ($_list, $_timeout) = ($self->{_pids}, $self->{loop_timeout});
+      my ($_DAT_W_SOCK, $_pid) = ($self->{_dat_w_sock}->[0]);
 
-      if (exists $_core_output_function{$_func}) {
-         $_core_output_function{$_func}();
+      $_timeout = 5 if $_timeout < 5;
+
+      local $SIG{ALRM} = sub {
+         alarm 0;
+         for my $i (0 .. @{ $_list }) {
+            if ($_pid = $_list->[$i]) {
+               if (waitpid($_pid, 1)) {
+                  $self->{_total_exited}  += 1;
+                  $self->{_total_running} -= 1;
+                  $self->{_total_workers} -= 1;
+                  $_list->[$i] = undef;
+               }
+            }
+         }
+         print {$_DAT_W_SOCK} 'NOOP'.$LF . '0'.$LF;
+      };
+
+      while (1) {
+         alarm $_timeout;
+         $_func = <$_DAT_R_SOCK>;
+         $_DAU_R_SOCK = $_channels->[ <$_DAT_R_SOCK> ];
+
+         alarm 0;
+         if (exists $_core_output_function{$_func}) {
+            $_core_output_function{$_func}();
+         } elsif (exists $_plugin_function->{$_func}) {
+            $_plugin_function->{$_func}();
+         }
+
+         last unless $self->{_total_running};
       }
-      elsif (exists $_plugin_function->{$_func}) {
-         $_plugin_function->{$_func}();
-      }
+   }
 
-      last unless ($self->{_total_running});
+   ## Otherwise, wait on requests *without* timeout capability.
+   ## Exit loop when all workers have completed processing.
+
+   else {
+      while (1) {
+         $_func = <$_DAT_R_SOCK>;
+         $_DAU_R_SOCK = $_channels->[ <$_DAT_R_SOCK> ];
+
+         if (exists $_core_output_function{$_func}) {
+            $_core_output_function{$_func}();
+         } elsif (exists $_plugin_function->{$_func}) {
+            $_plugin_function->{$_func}();
+         }
+
+         last unless $self->{_total_running};
+      }
    }
 
    ## Call module's loop_end routine for modules plugged into MCE.
+
    for my $_p (@{ $_plugin_loop_end }) {
       $_p->($self);
    }
 
    ## Call on_post_run callback.
+
    $_on_post_run->($self, $self->{_status}) if (defined $_on_post_run);
 
    ## Close opened sendto file handles.
+
    for my $_p (keys %_sendto_fhs) {
       close  $_sendto_fhs{$_p};
       undef  $_sendto_fhs{$_p};
@@ -821,6 +881,7 @@ sub _output_loop {
    }
 
    ## Restore the default handle. Close MCE STDOUT/STDERR handles.
+
    select $_old_hndl;
 
    close $_MCE_STDOUT; undef $_MCE_STDOUT;

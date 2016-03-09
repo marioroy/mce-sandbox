@@ -1,11 +1,11 @@
 
 =head1 NAME
 
-MCE::Core - Documentation describing the Core API for Many-Core Engine
+MCE::Core - Documentation describing the core MCE API
 
 =head1 VERSION
 
-This document describes MCE::Core version 1.608
+This document describes MCE::Core version 1.700
 
 =head1 SYNOPSIS
 
@@ -50,7 +50,7 @@ Below, a new instance is configured with all available options.
 
    my $mce = MCE->new(
 
-      max_workers => 8,                   ## Default $MCE::MAX_WORKERS
+      max_workers => 8,                   ## Default 1
 
          # Number of workers to spawn. This can be set automatically
          # with MCE 1.412 and later releases.
@@ -64,27 +64,32 @@ Below, a new instance is configured with all available options.
 
          # max_workers => MCE::Util::get_ncpu, # run on all lcores
 
-      chunk_size => 2000,                 ## Default $MCE::CHUNK_SIZE
+      chunk_size => 2000,                 ## Default 1
 
          # Can also take a suffix; K (Kilobytes) or M (Megabytes).
-         # Smaller than or equal to 8192 is number of records.
-         # Greater than 8192 is number of bytes. MCE reads until
-         # the end of record before calling user_func. A value
-         # above 64M will be set to 64M (the maximum).
+         # The default is 1 when using the Core API and 'auto' for
+         # MCE Models. For arrays or queues, chunk_size means the
+         # number of records per chunk. For iterators, MCE will not
+         # use chunk_size, though the iterator may use it to determine
+         # how much to return per iteration. For files, smaller than or
+         # equal to 8192 is the number of records.  Greater than 8192
+         # is the number of bytes. MCE reads until the end of record
+         # before calling user_func. A value above 64M will change
+         # to 64M quietly (the maximum allowed).
 
          # chunk_size => 1,               ## Consists of 1 record
          # chunk_size => 1000,            ## Consists of 1000 records
          # chunk_size => '16K',           ## Approximate 16 kilobytes
          # chunk_size => '20M',           ## Approximate 20 megabytes
 
-      tmp_dir => $tmp_dir,                ## Default $MCE::TMP_DIR
+      tmp_dir => $tmp_dir,                ## Default $MCE::Signal::tmp_dir
 
          # Default is $MCE::Signal::tmp_dir which points to
          # $ENV{TEMP} if defined. Otherwise, tmp_dir points
          # to a location under /tmp.
 
-      freeze => \&encode_sereal,          ## Default $MCE::FREEZE
-      thaw   => \&decode_sereal,          ## Default $MCE::THAW
+      freeze => \&encode_sereal,          ## Default \&Storable::freeze
+      thaw   => \&decode_sereal,          ## Default \&Storable::thaw
 
          # Release 1.412 allows freeze and thaw to be overridden.
          # Simply include a serialization module prior to loading
@@ -133,41 +138,46 @@ Below, a new instance is configured with all available options.
          # MCE applies additional logic when RS begins with a newline
          # character; e.g. RS => "\n>". It trims away characters after
          # the newline and prepends them to the next record.
-         # This happens automatically when not slurping. Otherwise,
-         # the logic is applied to the first and last records only.
          #
          # Typically, the left side is what happens for $/ = "\n>".
          # The right side is what user_func receives.
          #
-         # use_slurpio => 0  (all records begin with > and end with \n)
+         # All records begin with > and end with \n
          #    Record 1:  >seq1 ... \n>   (to)   >seq1 ... \n
          #    Record 2:  seq2  ... \n>          >seq2 ... \n
          #    Record 3:  seq3  ... \n>          >seq3 ... \n
          #    Last Rec:  seqN  ... \n           >seqN ... \n
-         #
-         # use_slurpio => 1  (all chunks begin with > and end with \n)
-         # 1  Record 1:  >seq1 ... \n>   (to)   >seq1 ... \n>
-         #    Record 2:  seq2  ... \n>          seq2  ... \n>
-         #    Record 3:  seq3  ... \n>          seq3  ... \n
-         #
-         # 2  Record 4:  seq4  ... \n>   (to)   >seq4 ... \n>
-         #    Record 5:  seq5  ... \n>          seq5  ... \n>
-         #    Record 6:  seq6  ... \n>          seq6  ... \n
-         #
-         # 3  Record 7:  seq7  ... \n>   (to)   >seq7 ... \n>
-         #    Record 8:  seq8  ... \n>          seq8  ... \n>
-         #    Last Rec:  seqN  ... \n           seqN  ... \n
 
-      use_slurpio => 1,                   ## Default 0
+      loop_timeout => 5,                  ## Default 0
+
+         # Added in 1.7, enables the manager process to timeout of a read
+         # on channel 0. The manager process decrements the total workers
+         # running for any worker which have died in an uncontrollable
+         # manner. Specify this option if on occassion a worker runs out
+         # of memory or dies due to an error from an XS module.
+         #
+         # A number smaller than 5 is silently increased to 5.
+
+      max_retries => 2,                   ## Default 0
+
+         # This option, added in 1.7, causes MCE to retry a failed
+         # chunk from a worker dying while processing input data or
+         # sequence of numbers.
+
       parallel_io => 1,                   ## Default 0
-
-         # Whether to enable slurpio when reading files.
-         # Passes raw chunk (scalar ref) to user function.
+      posix_exit  => 1,                   ## Default 0
+      use_slurpio => 1,                   ## Default 0
 
          # The parallel_io option enables parallel reads during
-         # large slurpio. Useful when reading from fast storage.
+         # large slurpio, useful when reading from fast storage.
          # Do not enable parallel_io when running MCE on many
-         # blades and input coming from shared storage.
+         # blades with input coming from shared storage.
+
+         # Set posix_exit to avoid all END and destructor processing
+         # for non-threads spawned via fork.
+
+         # Enable slurpio to pass the raw chunk (scalar ref)
+         # to the user function when reading input files.
 
       use_threads => 1,                   ## Auto 0 or 1
 
@@ -196,13 +206,13 @@ Below, a new instance is configured with all available options.
          # Specify job_delay when wanting to stagger
          # workers connecting to a database.
 
-      on_post_exit => \&on_post_exit,     ## Default undef
-      on_post_run => \&on_post_run,       ## Default undef
+      on_post_exit  => \&on_post_exit,    ## Default undef
+      on_post_run   => \&on_post_run,     ## Default undef
 
-         # Execute code block after a worker exits.
-         # exit, MCE->exit, or die
+         # Execute code block after a worker exits or dies.
+         # MCE->exit, exit, or die
 
-         # Execute code block after running a job.
+         # Execute code block after running.
          # MCE->process or MCE->run
 
       user_args => { env => 'test' },     ## Default undef
@@ -271,7 +281,7 @@ Below, a new instance is configured with all available options.
          # STEP, if omitted, defaults to 1 if BEGIN is smaller than
          # END or -1 if BEGIN is greater than END. The FORMAT string
          # is passed to sprintf behind the scene (% may be omitted).
-         # e.g. $seq_n_formated = sprintf("%4.1f", $seq_n);
+         # e.g. $seq_n_formatted = sprintf("%4.1f", $seq_n);
 
          # Do not specify both options; input_data and sequence.
          # Release 1.4 allows one to specify an array reference.
@@ -344,7 +354,7 @@ MCE 1.5 allows all public method to be called directly.
 
 =head2 OVERRIDING DEFAULTS
 
-The following list 5 options which may be overridden when loading the module.
+The following list options which may be overridden when loading the module.
 
    use Sereal qw( encode_sereal decode_sereal );
    use CBOR::XS qw( encode_cbor decode_cbor );
@@ -360,14 +370,10 @@ The following list 5 options which may be overridden when loading the module.
 
    my $mce = MCE->new( ... );
 
-There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise defaults to Storable for
-serialization.
+There is a simpler way to enable Sereal. The following will attempt to use
+Sereal if available, otherwise defaults to Storable for serialization.
 
    use MCE Sereal => 1;
-
-   ## Serialization is by the Sereal module if available.
-   my $mce = MCE->new( ... );
 
 =head2 RUNNING
 
@@ -592,8 +598,9 @@ The next several examples specify an iterator reference for input_data.
    30: 60
 
 The following example queries the DB for the next 1000 rows. Notice the use of
-fetchall_arrayref. The iterator function itself recieves one argument which is
-the chunk_size value (added in MCE 1.510).
+fetchall_arrayref. The iterator function itself receives one argument which is
+chunk_size (added in MCE 1.510) to determine how much to return per iteration.
+The default is 1 for the Core API and MCE Models.
 
    use DBI;
    use MCE;
@@ -610,7 +617,7 @@ the chunk_size value (added in MCE 1.510).
       $sth->execute;
 
       return sub {
-         my $chunk_size = shift;
+         my ($chunk_size) = @_;
 
          if (my $aref = $sth->fetchall_arrayref(undef, $chunk_size)) {
             return @{ $aref };
@@ -739,7 +746,8 @@ its input data. Otherwise, the process will never end.
 
 The following demonstrates how to retrieve a chunk from the lazy array per
 each successive call. Here, undef is sent by the iterator block when $i is
-greater than $max.
+greater than $max. Iterators may optionally use chunk_size to determine how
+much to return per iteration.
 
    use Tie::Array::Lazy;
    use MCE;
@@ -752,7 +760,8 @@ greater than $max.
       my $j = 0; my ($a_ref, $max) = @_;
 
       return sub {
-         my $i = $j; $j += MCE->chunk_size;
+         my ($chunk_size) = @_;
+         my $i = $j;  $j += $chunk_size;
 
          return if $i > $max;
          return $j <= $max ? @$a_ref[$i .. $j - 1] : @$a_ref[$i .. $max];
@@ -881,6 +890,68 @@ Time was measured using 1 worker to emphasize the difference.
    6250001 ..  7500000
    7500001 ..  8750000
    8750001 .. 10000000
+
+=head2 SYNTAX for MAX_RETRIES
+
+The max_retries option, added in 1.7, causes MCE to retry a failed chunk from
+a worker dying while processing input data or sequence of numbers.
+
+MCE configures the on_post_exit option with the following code in the absence
+of on_post_exit. Otherwise, simply tailor this into your on_post_exit code.
+
+   ## What is done behind the scene when max_retries is specified and
+   ## omitting the on_post_exit option in MCE.
+
+   sub on_post_exit {
+      my ($mce, $e, $retry_cnt) = @_;
+      my ($cnt, $msg) = ($retry_cnt + 1, "Error: Chunk $e->{id} failed");
+
+      ($retry_cnt < $mce->max_retries)
+         ? print {*STDERR} "$msg, retrying chunk attempt #${cnt}\n"
+         : print {*STDERR} "$msg\n";
+
+      $mce->restart_worker;
+   }
+
+   ## Running MCE with max_retries.
+
+   use strict;
+   use warnings;
+
+   use MCE;
+
+   sub user_func {
+      my ($mce, $chunk_ref, $chunk_id) = @_;
+      die "Died : chunk_id == 3" if $chunk_id == 3;
+      print "$mce->{_wid}: $chunk_id\n";
+   }
+
+   my $mce = MCE->new(
+      max_workers => 1, user_func => \&user_func,
+      max_retries => 2,
+   )->spawn;
+
+   my @input_data; push @input_data, qw( 0 1 2 3 4 5 6 7 );
+
+   $mce->process( { chunk_size => 1 }, \@input_data );
+
+   $mce->shutdown;
+
+   -- Output
+
+   1: 1
+   1: 2
+   Died : chunk_id == 3 at script.pl line 8, <__ANONIO__> line 6.
+   Error: Chunk 3 failed, retrying chunk attempt #1
+   Died : chunk_id == 3 at script.pl line 8, <__ANONIO__> line 7.
+   Error: Chunk 3 failed, retrying chunk attempt #2
+   Died : chunk_id == 3 at script.pl line 8, <__ANONIO__> line 14.
+   Error: Chunk 3 failed
+   1: 4
+   1: 5
+   1: 6
+   1: 7
+   1: 8
 
 =head2 SYNTAX for USER_BEGIN and USER_END
 
@@ -1173,7 +1244,7 @@ applies to input_data or sequence. The value is 0 for the manager process.
 
 =head2 $mce->chunk_size ( void )
 
-Returns the chunk_size used by MCE.
+Getter method for chunk_size used by MCE.
 
    my $chunk_size = $mce->chunk_size;
    my $chunk_size = MCE->chunk_size;
@@ -1187,9 +1258,16 @@ can be overridden when including MCE.
    my $frozen = $mce->freeze([ 0, 2, 4 ]);
    my $frozen = MCE->freeze([ 0, 2, 4 ]);
 
+=head2 $mce->max_retries ( void )
+
+Getter method for max_retries used by MCE.
+
+   my $max_retries = $mce->max_retries;
+   my $max_retries = MCE->max_retries;
+
 =head2 $mce->max_workers ( void )
 
-Returns the value for max_workers used by MCE.
+Getter method for max_workers used by MCE.
 
    my $max_workers = $mce->max_workers;
    my $max_workers = MCE->max_workers;
@@ -1272,8 +1350,7 @@ Methods listed below are callable by the main process only.
 =head2 $mce->forseq ( $sequence_spec [, { options } ], sub { ... } )
 
 Forchunk, foreach, and forseq are sugar methods and described in
-L<MCE::Candy|MCE::Candy>. Stubs exist in MCE which load MCE::Candy
-automatically.
+L<MCE::Candy>. Stubs exist in MCE which load MCE::Candy automatically.
 
 =head2 $mce->process ( $input_data [, { options } ] )
 
@@ -1332,6 +1409,10 @@ Do the following if wanting workers to persist between jobs.
    $mce->process({ sequence => [ 10, 90, 2 ] });
 
    $mce->shutdown;
+
+=head2 $mce->relay_final ( void )
+
+Desribed in L<MCE::Relay>.
 
 =head2 $mce->restart_worker ( void )
 
@@ -1550,8 +1631,7 @@ or on_post_run options for callback support.
 =head2 $mce->gather ( $arg1, [, $arg2, ... ] )
 
 A worker can submit data to the location specified via the gather option by
-calling this method. See L<MCE::Flow|MCE::Flow> and L<MCE::Loop|MCE::Loop>
-for additional use-case.
+calling this method. See L<MCE::Flow> and L<MCE::Loop> for additional use-case.
 
    use MCE;
 
@@ -1714,6 +1794,12 @@ reference.
 
    MCE->print(\*STDOUT, \@array, "\n");
    MCE->print("", \@array, "\n");         ## ok
+
+=head2 $mce->relay ( sub { code } )
+
+=head2 $mce->relay_recv ( void )
+
+Desribed in L<MCE::Relay>.
 
 =head2 $mce->sendto ( $to, $arg1, ... )
 
@@ -2025,7 +2111,7 @@ The interval.pl example above is included with MCE.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Shared>
 
 =head1 AUTHOR
 

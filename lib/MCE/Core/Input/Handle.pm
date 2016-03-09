@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Core::Input::Handle - File_path and Scalar_ref input reader.
+## File_path and Scalar_ref input reader.
 ##
 ## This package provides the read handle method used internally by the worker
 ## process. Distribution follows a bank-queuing model.
@@ -14,15 +14,13 @@ package MCE::Core::Input::Handle;
 use strict;
 use warnings;
 
-our $VERSION = '1.608';
+our $VERSION = '1.700';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
 
 use bytes;
 
@@ -69,12 +67,8 @@ sub _worker_read_handle {
 
    $_chunk_id  = $_offset_pos = 0;
 
-   if ($_chunk_size <= MAX_RECS_SIZE || $_proc_type == READ_MEMORY) {
-      open    $_IN_FILE, '<', $_input_data or die "$_input_data: $!\n";
-      binmode $_IN_FILE;
-   } else {
-      sysopen $_IN_FILE, $_input_data, O_RDONLY or die "$_input_data: $!\n";
-   }
+   open    $_IN_FILE, '<', $_input_data or die "$_input_data: $!\n";
+   binmode $_IN_FILE;
 
    ## -------------------------------------------------------------------------
 
@@ -91,11 +85,11 @@ sub _worker_read_handle {
       $_ = '';
 
       ## Obtain the next chunk_id and offset position.
-      sysread $_QUE_R_SOCK, $_next, $_que_read_size;
+      1 until sysread $_QUE_R_SOCK, $_next, $_que_read_size;
       ($_chunk_id, $_offset_pos) = unpack($_que_template, $_next);
 
       if ($_offset_pos >= $_data_size) {
-         syswrite $_QUE_W_SOCK, pack($_que_template, 0, $_offset_pos);
+         1 until syswrite $_QUE_W_SOCK, pack($_que_template, 0, $_offset_pos);
          close $_IN_FILE; undef $_IN_FILE;
          return;
       }
@@ -149,74 +143,36 @@ sub _worker_read_handle {
             }
          }
 
-         syswrite $_QUE_W_SOCK,
+         1 until syswrite $_QUE_W_SOCK,
             pack($_que_template, $_chunk_id, tell $_IN_FILE);
       }
       else {                                      ## Large chunk.
          local $/ = $_RS if ($_RS_FLG);
 
-         if ($_proc_type == READ_MEMORY) {
-            if ($_parallel_io && ! $_RS_FLG) {
-               syswrite $_QUE_W_SOCK,
-                  pack($_que_template, $_chunk_id, $_offset_pos + $_chunk_size);
+         if ($_parallel_io && ! $_RS_FLG) {
+            1 until syswrite $_QUE_W_SOCK,
+               pack($_que_template, $_chunk_id, $_offset_pos + $_chunk_size);
 
-               $_tmp_cs = $_chunk_size;
-               seek $_IN_FILE, $_offset_pos, 0;
+            $_tmp_cs = $_chunk_size;
+            seek $_IN_FILE, $_offset_pos, 0;
 
-               if ($_offset_pos) {
-                  $_tmp_cs -= length <$_IN_FILE> || 0;
-               }
-
-               if (read($_IN_FILE, $_, $_tmp_cs, $_p) == $_tmp_cs) {
-                  $_ .= <$_IN_FILE>;
-               }
+            if ($_offset_pos) {
+               $_tmp_cs -= length <$_IN_FILE> || 0;
             }
-            else {
-               seek $_IN_FILE, $_offset_pos, 0;
 
-               if (read($_IN_FILE, $_, $_chunk_size, $_p) == $_chunk_size) {
-                  $_ .= <$_IN_FILE>;
-               }
-
-               syswrite $_QUE_W_SOCK,
-                  pack($_que_template, $_chunk_id, tell $_IN_FILE);
+            if (read($_IN_FILE, $_, $_tmp_cs, $_p) == $_tmp_cs) {
+               $_ .= <$_IN_FILE>;
             }
          }
          else {
-            if ($_parallel_io && ! $_RS_FLG) {
-               syswrite $_QUE_W_SOCK,
-                  pack($_que_template, $_chunk_id, $_offset_pos + $_chunk_size);
+            seek $_IN_FILE, $_offset_pos, 0;
 
-               $_tmp_cs = $_chunk_size;
-
-               if ($_offset_pos) {
-                  seek $_IN_FILE, $_offset_pos, 0;
-                  $_tmp_cs -= length <$_IN_FILE> || 0;
-                  sysseek $_IN_FILE, tell $_IN_FILE, 0;
-               }
-               else {
-                  sysseek $_IN_FILE, $_offset_pos, 0;
-               }
-
-               if (sysread($_IN_FILE, $_, $_tmp_cs, $_p) == $_tmp_cs) {
-                  seek $_IN_FILE, sysseek($_IN_FILE, 0, 1), 0;
-                  $_ .= <$_IN_FILE>;
-               }
+            if (read($_IN_FILE, $_, $_chunk_size, $_p) == $_chunk_size) {
+               $_ .= <$_IN_FILE>;
             }
-            else {
-               sysseek $_IN_FILE, $_offset_pos, 0;
 
-               if (sysread($_IN_FILE, $_, $_chunk_size, $_p) == $_chunk_size) {
-                  seek $_IN_FILE, sysseek($_IN_FILE, 0, 1), 0;
-                  $_ .= <$_IN_FILE>;
-               }
-               else {
-                  seek $_IN_FILE, sysseek($_IN_FILE, 0, 1), 0;
-               }
-
-               syswrite $_QUE_W_SOCK,
-                  pack($_que_template, $_chunk_id, tell $_IN_FILE);
-            }
+            1 until syswrite $_QUE_W_SOCK,
+               pack($_que_template, $_chunk_id, tell $_IN_FILE);
          }
       }
 

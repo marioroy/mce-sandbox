@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Relay - Extends Many-Core Engine with relay capabilities.
+## Extends Many-Core Engine with relay capabilities.
 ##
 ###############################################################################
 
@@ -9,18 +9,16 @@ package MCE::Relay;
 use strict;
 use warnings;
 
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
+
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
-
-our $VERSION = '1.608';
-
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
 
 use bytes;
 
 use constant {
-   OUTPUT_W_RLA => 'W~RLA',              ## Worker has relayed
+   OUTPUT_W_RLA => 'W~RLA',  # Worker has relayed
 };
 
 ###############################################################################
@@ -30,11 +28,11 @@ use constant {
 ###############################################################################
 
 my $LF = "\012";  Internals::SvREADONLY($LF, 1);
-my $_loaded;
+my $_imported;
 
 sub import {
 
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    if (defined $MCE::VERSION) {
       _mce_m_init();
@@ -61,7 +59,7 @@ sub import {
 
    my %_output_function = (
 
-      OUTPUT_W_RLA.$LF => sub {                   ## Worker has relayed
+      OUTPUT_W_RLA.$LF => sub {                   # Worker has relayed
 
          $_DAU_R_SOCK = ${ $_DAU_R_SOCK_REF };
 
@@ -167,7 +165,7 @@ sub relay_final {
 
    my $x = shift; my $self = ref($x) ? $x : $MCE::MCE;
 
-   _croak('MCE::relay_final: method cannot be called by the worker process')
+   _croak('MCE::relay_final: method is not allowed by the worker process')
       if ($self->{_wid});
 
    if (exists $self->{_rla_return}) {
@@ -191,9 +189,9 @@ sub relay_recv {
 
    _croak('MCE::relay: (init_relay) is not specified')
       unless (defined $self->{init_relay});
-   _croak('MCE::relay: method cannot be called by the manager process')
+   _croak('MCE::relay: method is not allowed by the manager process')
       unless ($self->{_wid});
-   _croak('MCE::relay: method cannot be called by this sub task')
+   _croak('MCE::relay: method is not allowed by this sub task')
       if ($self->{_task_id} > 0);
 
    my $_chn = ($self->{_chunk_id} - 1) % $self->{max_workers};
@@ -237,9 +235,9 @@ sub relay (;&) {
 
    _croak('MCE::relay: (init_relay) is not specified')
       unless (defined $self->{init_relay});
-   _croak('MCE::relay: method cannot be called by the manager process')
+   _croak('MCE::relay: method is not allowed by the manager process')
       unless ($self->{_wid});
-   _croak('MCE::relay: method cannot be called by this sub task')
+   _croak('MCE::relay: method is not allowed by this sub task')
       if ($self->{_task_id} > 0);
 
    if (ref $_code ne 'CODE') {
@@ -323,7 +321,7 @@ MCE::Relay - Extends Many-Core Engine with relay capabilities
 
 =head1 VERSION
 
-This document describes MCE::Relay version 1.608
+This document describes MCE::Relay version 1.700
 
 =head1 SYNOPSIS
 
@@ -371,9 +369,9 @@ automatically when init_relay is specified.
 All workers must participate when relaying data. Calling relay more than once
 is not recommended inside the block. Doing so will stall the application.
 
-Relaying is not met for passing big data. The last worker will likely stall if
-exceeding the buffer size for the socket. Not exceeding 8 KiB is safe across
-all platforms.
+Relaying is not meant for passing big data. The last worker will likely stall
+if exceeding the buffer size for the socket. Not exceeding 16 KiB - 7 is safe
+across all platforms.
 
 =head1 API DOCUMENTATION
 
@@ -568,7 +566,7 @@ is chunk_id driven (or task_wid when not processing input), thus orderly.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

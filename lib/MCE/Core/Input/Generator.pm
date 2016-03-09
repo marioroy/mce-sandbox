@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Core::Input::Generator - Sequence of numbers (for task_id > 0).
+## Sequence of numbers (for task_id > 0).
 ##
 ## This package provides a sequence of numbers used internally by the worker
 ## process. Distribution is divided equally among workers. This allows sequence
@@ -15,15 +15,13 @@ package MCE::Core::Input::Generator;
 use strict;
 use warnings;
 
-our $VERSION = '1.608';
+our $VERSION = '1.700';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -76,7 +74,7 @@ sub _worker_sequence_generator {
 
          $_ = (defined $_fmt) ? sprintf("%$_fmt", $_next) : $_next;
 
-         if ($_chunk_size > 1) {
+         if ($_chunk_size > 1 || $_bounds_only) {
             $_ = ($_bounds_only) ? [ $_, $_ ] : [ $_ ];
          }
 
@@ -94,6 +92,8 @@ sub _worker_sequence_generator {
          return if (!$_flag && $_next < $_end);
 
          $_ = (defined $_fmt) ? sprintf("%$_fmt", $_next) : $_next;
+         $_ = [ $_, $_ ] if ($_bounds_only);
+
          $_wuf->($self, $_, $_chunk_id);
 
          _WORKER_SEQ_GEN__NEXT_A:
@@ -112,19 +112,14 @@ sub _worker_sequence_generator {
          ## -------------------------------------------------------------------
 
          if ($_bounds_only) {
-            my $_tmp_b = $_next; my $_tmp_e;
+            my ($_tmp_b, $_tmp_e) = ($_next);
 
             if ($_begin < $_end) {
-               if ($_step * $_chunk_size + $_n_begin <= $_end) {
+               if ($_step * ($_chunk_size - 1) + $_n_begin <= $_end) {
                   $_tmp_e = $_step * ($_chunk_size - 1) + $_n_begin;
                }
                else {
-                  my $_start = int(
-                     ($_end - $_next) / $_chunk_size / $_step * $_chunk_size
-                  );
-                  $_start = 1 if ($_start < 1);
-
-                  for my $_i ($_start .. $_chunk_size) {
+                  for my $_i (1 .. $_chunk_size) {
                      last if ($_next > $_end);
                      $_tmp_e = $_next;
                      $_next  = $_step * $_i + $_n_begin;
@@ -132,16 +127,11 @@ sub _worker_sequence_generator {
                }
             }
             else {
-               if ($_step * $_chunk_size + $_n_begin >= $_end) {
+               if ($_step * ($_chunk_size - 1) + $_n_begin >= $_end) {
                   $_tmp_e = $_step * ($_chunk_size - 1) + $_n_begin;
                }
                else {
-                  my $_start = int(
-                     ($_next - $_end) / $_chunk_size / $_step * $_chunk_size
-                  );
-                  $_start = 1 if ($_start < 1);
-
-                  for my $_i ($_start .. $_chunk_size) {
+                  for my $_i (1 .. $_chunk_size) {
                      last if ($_next < $_end);
                      $_tmp_e = $_next;
                      $_next  = $_step * $_i + $_n_begin;
@@ -151,11 +141,9 @@ sub _worker_sequence_generator {
 
             return unless (defined $_tmp_e);
 
-            if (defined $_fmt) {
-               @_n = (sprintf("%$_fmt", $_tmp_b), sprintf("%$_fmt", $_tmp_e));
-            } else {
-               @_n = ($_tmp_b, $_tmp_e);
-            }
+            @_n = (defined $_fmt)
+               ? ( sprintf("%$_fmt",$_tmp_b), sprintf("%$_fmt",$_tmp_e) )
+               : ( $_tmp_b, $_tmp_e );
          }
 
          ## -------------------------------------------------------------------
@@ -163,11 +151,9 @@ sub _worker_sequence_generator {
          else {
             if ($_begin < $_end) {
                if (!defined $_fmt && $_step == 1) {
-                  if ($_next + $_chunk_size <= $_end) {
-                     @_n = ($_next .. $_next + $_chunk_size - 1);
-                  } else {
-                     @_n = ($_next .. $_end);
-                  }
+                  @_n = ($_next + $_chunk_size <= $_end)
+                     ? ($_next .. $_next + $_chunk_size - 1)
+                     : ($_next .. $_end);
                }
                else {
                   for my $_i (1 .. $_chunk_size) {

@@ -1,25 +1,18 @@
 
 =head1 NAME
 
-MCE::Examples - A list of examples demonstrating Many-Core Engine
+MCE::Examples - Various examples and demonstrations
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.608
-
-=head1 DESCRIPTION
-
-MCE comes with various examples showing real-world scenarios on parallelizing
-something as small as cat (try with -n) to searching for patterns and word
-count aggregation. MCE 1.522 adds sampledb to the list demonstrating DBI
-with MCE. MCE 1.600 adds biofasta (folder), mutex.pl, and relay.pl.
+This document describes MCE::Examples version 1.700
 
 =head1 INCLUDED WITH THE DISTRIBUTION
 
 A wrapper script for parallelizing the grep binary. Hence, processing is done
 by the binary, not Perl. This wrapper resides under the bin directory.
 
-   mce_grep
+    mce_grep
         A wrapper script with support for the following C binaries.
         agrep, grep, egrep, fgrep, and tre-agrep
 
@@ -30,79 +23,17 @@ by the binary, not Perl. This wrapper resides under the bin directory.
         The gain in performance is noticeable for expensive patterns,
         especially with agrep and tre-agrep.
 
-The following scripts are located under the examples directory.
+=head1 MCE EXAMPLES ON GITHUB
 
-   cat.pl, egrep.pl, wc.pl
-        Concatenation, egrep, and word count scripts similar to the
-        cat, egrep, and wc binaries respectively.
+The examples directory, beginning with 1.700, is maintained separately at a
+Github repository L<https://github.com/marioroy/mce-examples> and no longer
+included with the Perl MCE distribution.
 
-   files_flow.pl, files_mce.pl, files_thr.pl
-        Demonstrates MCE::Flow, MCE::Queue, and Thread::Queue.
-        See MCE::Queue synopsis for another variation.
+=head1 PROCESSING INPUT DATA
 
-   findnull.pl
-        A parallel script for reporting lines containing null fields.
-        It is many times faster than the egrep binary. Try this against
-        a large file containing very long lines.
+The next section describes ways to process input data in MCE.
 
-   flow_demo.pl, flow_model.pl
-        Demonstrates MCE::Flow, MCE::Queue, and MCE->gather.
-
-   foreach.pl, forseq.pl, forchunk.pl
-        These examples demonstrate the sqrt example from Parallel::Loops
-        (Parallel::Loops v0.07 utilizing Parallel::ForkManager v1.07).
-
-        Testing was on a Linux VM; Perl v5.20.1; Haswell i7 at 2.6 GHz.
-        The number indicates the size of input displayed in 1 second.
-        Output was directed to >/dev/null.
-
-        Parallel::Loops:     1,600  Forking each @input is expensive
-        MCE->foreach...:    23,000  Workers persist between each @input
-        MCE->forseq....:   200,000  Uses sequence of numbers as input
-        MCE->forchunk..:   800,000  IPC overhead is greatly reduced
-
-   interval.pl, mutex.pl, relay.pl
-        Demonstration of the interval option appearing in MCE 1.5.
-        Mutex locking and relaying data among workers.
-
-   iterator.pl
-        Similar to forseq.pl. Specifies an iterator for input_data.
-        A factory function is called which returns a closure.
-
-   pipe1.pl, pipe2.pl
-        Process STDIN or FILE in parallel. Processing is via Perl for
-        pipe1.pl, whereas an external command for pipe2.pl.
-
-   seq_demo.pl, step_demo.pl
-        Demonstration of the new sequence option appearing in MCE 1.3.
-        Run with seq_demo.pl | sort
-
-        Transparent use of MCE::Queue with MCE::Step.
-
-   sync.pl, utf8.pl
-        Barrier synchronization demonstration.
-        Process input containing unicode data.
-
-The rest are organized into various sub directories.
-
-   biofasta/fasta_aidx.pl, fasta_rdr*.pl
-        Parallel demonstration for Bioinformatics.
-
-   matmult/matmult_base*.pl, matmult_mce*.pl, strassen_mce*.pl
-        Various matrix multiplication demonstrations benchmarking
-        PDL, PDL + MCE, as well as parallelizing Strassen's
-        divide-and-conquer algorithm. Included are 2 plain
-        Perl examples.
-
-   sampledb/create.pl, query*.pl, update*.pl
-        Examples demonstrating DBI (SQLite) with MCE.
-
-   tbray/wf_mce1.pl, wf_mce2.pl, wf_mce3.pl
-        An implementation of wide finder utilizing MCE.
-        As fast as MMAP IO when file resides in OS FS cache.
-        2x ~ 3x faster when reading directly from disk.
-
-=head1 CHUNK_SIZE => 1 (in essence, wanting no chunking on input data)
+=head2 CHUNK_SIZE => 1 (in essence, disabling chunking)
 
 Imagine a long running process and wanting to parallelize an array against a
 pool of workers. The sequence option may be used if simply wanting to loop
@@ -179,7 +110,7 @@ This does the same thing using the foreach "sugar" method.
    });
 
 The 2 examples described above were done using the Core API. MCE 1.5 comes
-with several models. The L<MCE::Loop|MCE::Loop> model is used below.
+with several models. The L<MCE::Loop> model is used below.
 
    use MCE::Loop;
 
@@ -203,7 +134,7 @@ with several models. The L<MCE::Loop|MCE::Loop> model is used below.
 
    MCE::Loop::finish;
 
-=head1 CHUNKING INPUT_DATA
+=head2 CHUNKING INPUT DATA
 
 Chunking has the effect of reducing IPC overhead by many folds. A chunk
 containing $chunk_size items is sent to the next available worker.
@@ -290,7 +221,7 @@ This does the same thing using the forchunk "sugar" method.
       MCE->gather($chunk_id, \@n, \@result);
    });
 
-Finally, chunking with the L<MCE::Loop|MCE::Loop> model.
+Finally, chunking with the L<MCE::Loop> model.
 
    use MCE::Loop;
 
@@ -748,7 +679,7 @@ first come, first serve basis.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

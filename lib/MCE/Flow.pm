@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Flow - Parallel flow model for building creative applications.
+## Parallel flow model for building creative applications.
 ##
 ###############################################################################
 
@@ -9,15 +9,17 @@ package MCE::Flow;
 use strict;
 use warnings;
 
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
+
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
 
 use Scalar::Util qw( looks_like_number );
-
-use MCE;
-
-our $VERSION  = '1.608';
+use Storable ();
+use MCE::Signal;
 
 our @CARP_NOT = qw( MCE );
 
@@ -27,50 +29,43 @@ our @CARP_NOT = qw( MCE );
 ##
 ###############################################################################
 
-my $MAX_WORKERS = 'auto';
-my $CHUNK_SIZE  = 'auto';
+my ($MAX_WORKERS, $CHUNK_SIZE) = ('auto', 'auto');
 
-my ($_params, @_prev_c, @_prev_n, @_prev_w, @_user_tasks);
-my ($_MCE, $_loaded); my $_tag = 'MCE::Flow';
+my $TMP_DIR = $MCE::Signal::tmp_dir;
+my $FREEZE  = \&Storable::freeze;
+my $THAW    = \&Storable::thaw;
+
+my ($_params, @_prev_c, @_prev_n, @_prev_t, @_prev_w, @_user_tasks);
+my ($_MCE, $_imported); my $_tag = 'MCE::Flow';
 
 sub import {
-
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    ## Process module arguments.
    while (my $_argument = shift) {
       my $_arg = lc $_argument;
 
-      $MAX_WORKERS = shift and next if ( $_arg eq 'max_workers' );
-      $CHUNK_SIZE  = shift and next if ( $_arg eq 'chunk_size' );
-
-      $MCE::FREEZE = $MCE::MCE->{freeze} = shift and next
-         if ( $_arg eq 'freeze' );
-      $MCE::THAW = $MCE::MCE->{thaw} = shift and next
-         if ( $_arg eq 'thaw' );
+      $MAX_WORKERS = shift, next if ( $_arg eq 'max_workers' );
+      $CHUNK_SIZE  = shift, next if ( $_arg eq 'chunk_size' );
+      $FREEZE      = shift, next if ( $_arg eq 'freeze' );
+      $THAW        = shift, next if ( $_arg eq 'thaw' );
+      $TMP_DIR     = shift, next if ( $_arg eq 'tmp_dir' );
 
       if ( $_arg eq 'sereal' ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
-            unless ($@) {
-               $MCE::FREEZE = $MCE::MCE->{freeze} = \&encode_sereal;
-               $MCE::THAW = $MCE::MCE->{thaw} = \&decode_sereal;
-            }
+            $FREEZE = \&encode_sereal, $THAW = \&decode_sereal unless $@;
          }
          next;
       }
 
-      if ( $_arg eq 'tmp_dir' ) {
-         $MCE::TMP_DIR = $MCE::MCE->{tmp_dir} = shift;
-         my $_e1 = 'is not a directory or does not exist';
-         my $_e2 = 'is not writeable';
-         _croak($_tag."::import: ($MCE::TMP_DIR) $_e1") unless -d $MCE::TMP_DIR;
-         _croak($_tag."::import: ($MCE::TMP_DIR) $_e2") unless -w $MCE::TMP_DIR;
-         next;
-      }
-
-      _croak($_tag."::import: ($_argument) is not a valid module argument");
+      _croak("Error: ($_argument) invalid module option");
    }
+
+   ## Preload essential modules.
+   require MCE; MCE->import(
+      freeze => $FREEZE, thaw => $THAW, tmp_dir => $TMP_DIR
+   );
 
    $MAX_WORKERS = MCE::Util::_parse_max_workers($MAX_WORKERS);
    _validate_number($MAX_WORKERS, 'MAX_WORKERS');
@@ -106,9 +101,7 @@ sub init (@) {
    shift if (defined $_[0] && $_[0] eq 'MCE::Flow');
 
    if (MCE->wid) {
-      @_ = (); _croak(
-         "$_tag: function cannot be called by the worker process"
-      );
+      @_ = (); _croak("$_tag: (init) is not allowed by the worker process");
    }
 
    finish(); $_params = (ref $_[0] eq 'HASH') ? shift : { @_ };
@@ -121,10 +114,12 @@ sub init (@) {
 sub finish () {
 
    if (defined $_MCE && $_MCE->{_spawned}) {
-      MCE::_save_state; $_MCE->shutdown(); MCE::_restore_state;
+      MCE::_save_state(); $_MCE->shutdown(); MCE::_restore_state();
    }
 
-   @_user_tasks = (); @_prev_w = (); @_prev_n = (); @_prev_c = ();
+   @_prev_c = (); @_prev_n = (); @_prev_t = (); @_prev_w = ();
+
+   @_user_tasks = ();
 
    return;
 }
@@ -252,9 +247,7 @@ sub run (@) {
    shift if (defined $_[0] && $_[0] eq 'MCE::Flow');
 
    if (MCE->wid) {
-      @_ = (); _croak(
-         "$_tag: function cannot be called by the worker process"
-      );
+      @_ = (); _croak("$_tag: (run) is not allowed by the worker process");
    }
 
    if (ref $_[0] eq 'HASH') {
@@ -268,27 +261,32 @@ sub run (@) {
 
    ## -------------------------------------------------------------------------
 
-   my (@_code, @_name, @_wrks); my $_init_mce = 0; my $_pos = 0;
+   my (@_code, @_name, @_thrs, @_wrks); my $_init_mce = 0; my $_pos = 0;
 
    while (ref $_[0] eq 'CODE') {
       push @_code, $_[0];
 
       push @_name, (defined $_params && ref $_params->{task_name} eq 'ARRAY')
          ? $_params->{task_name}->[$_pos] : undef;
+      push @_thrs, (defined $_params && ref $_params->{use_threads} eq 'ARRAY')
+         ? $_params->{use_threads}->[$_pos] : undef;
       push @_wrks, (defined $_params && ref $_params->{max_workers} eq 'ARRAY')
          ? $_params->{max_workers}->[$_pos] : undef;
 
-      $_init_mce = 1
-         if (!defined $_prev_c[$_pos] || $_prev_c[$_pos] != $_code[$_pos]);
+      if (!defined $_prev_c[$_pos] || $_prev_c[$_pos] != $_code[$_pos]) {
+         $_init_mce = 1;
+      }
 
       {
          no warnings;
          $_init_mce = 1 if ($_prev_n[$_pos] ne $_name[$_pos]);
+         $_init_mce = 1 if ($_prev_t[$_pos] ne $_thrs[$_pos]);
          $_init_mce = 1 if ($_prev_w[$_pos] ne $_wrks[$_pos]);
       }
 
       $_prev_c[$_pos] = $_code[$_pos];
       $_prev_n[$_pos] = $_name[$_pos];
+      $_prev_t[$_pos] = $_thrs[$_pos];
       $_prev_w[$_pos] = $_wrks[$_pos];
 
       shift; $_pos++;
@@ -297,6 +295,7 @@ sub run (@) {
    if (defined $_prev_c[$_pos]) {
       pop @_prev_c for ($_pos .. @_prev_c - 1);
       pop @_prev_n for ($_pos .. @_prev_n - 1);
+      pop @_prev_t for ($_pos .. @_prev_t - 1);
       pop @_prev_w for ($_pos .. @_prev_w - 1);
 
       $_init_mce = 1;
@@ -338,28 +337,30 @@ sub run (@) {
       }
    }
 
-   MCE::_save_state;
+   MCE::_save_state();
 
    ## -------------------------------------------------------------------------
 
    if ($_init_mce) {
       $_MCE->shutdown() if (defined $_MCE);
-      _gen_user_tasks(\@_code, \@_name, \@_wrks);
+      _gen_user_tasks(\@_code, \@_name, \@_thrs, \@_wrks);
 
       my %_options = (
          max_workers => $_max_workers, task_name => $_tag,
-         user_tasks => \@_user_tasks,
+         user_tasks  => \@_user_tasks,
       );
 
       if (defined $_params) {
          local $_; my $_p = $_params;
 
          for (keys %{ $_p }) {
-            next if ($_ eq 'sequence_run');
             next if ($_ eq 'max_workers' && ref $_p->{max_workers} eq 'ARRAY');
-            next if ($_ eq 'task_name' && ref $_p->{task_name} eq 'ARRAY');
-            next if ($_ eq 'input_data');
+            next if ($_ eq 'task_name'   && ref $_p->{task_name}   eq 'ARRAY');
+            next if ($_ eq 'use_threads' && ref $_p->{use_threads} eq 'ARRAY');
+
             next if ($_ eq 'chunk_size');
+            next if ($_ eq 'input_data');
+            next if ($_ eq 'sequence_run');
 
             _croak("MCE::Flow: ($_) is not a valid constructor argument")
                unless (exists $MCE::_valid_fields_new{$_});
@@ -377,7 +378,7 @@ sub run (@) {
          for my $_p (qw(
             RS interval stderr_file stdout_file user_error user_output
             job_delay submit_delay on_post_exit on_post_run user_args
-            flush_file flush_stderr flush_stdout gather
+            flush_file flush_stderr flush_stdout gather max_retries
          )) {
             $_MCE->{$_p} = $_params->{$_p} if (exists $_params->{$_p});
          }
@@ -415,13 +416,16 @@ sub run (@) {
 
    delete $_MCE->{gather} if (defined $_wa);
 
-   MCE::_restore_state;
+   MCE::_restore_state();
 
    if (exists $_MCE->{_rla_return}) {
       $MCE::MCE->{_rla_return} = delete $_MCE->{_rla_return};
    }
 
-   finish() if ($^S);   ## shutdown if in eval state
+   if ($^S) {
+      ## shutdown if in eval state
+      MCE::_save_state(); $_MCE->shutdown(); MCE::_restore_state();
+   }
 
    return ((defined $_wa) ? @_a : ());
 }
@@ -439,13 +443,14 @@ sub _croak {
 
 sub _gen_user_tasks {
 
-   my ($_code_ref, $_name_ref, $_wrks_ref) = @_;
+   my ($_code_ref, $_name_ref, $_thrs_ref, $_wrks_ref) = @_;
 
    @_user_tasks = ();
 
    for (my $_i = 0; $_i < @{ $_code_ref }; $_i++) {
       push @_user_tasks, {
          task_name   => $_name_ref->[$_i],
+         use_threads => $_thrs_ref->[$_i],
          max_workers => $_wrks_ref->[$_i],
          user_func   => $_code_ref->[$_i]
       }
@@ -485,7 +490,7 @@ MCE::Flow - Parallel flow model for building creative applications
 
 =head1 VERSION
 
-This document describes MCE::Flow version 1.608
+This document describes MCE::Flow version 1.700
 
 =head1 DESCRIPTION
 
@@ -601,8 +606,8 @@ between sub-tasks. Thus, the least overhead.
    }
 
 In summary, MCE::Flow builds out a MCE instance behind the scene and starts
-running. Both task_name and max_workers (not shown) can take an anonymous
-array for specifying the values uniquely for each sub-task.
+running. The task_name (shown), max_workers, and use_threads options can take
+an anonymous array for specifying the values uniquely per each sub-task.
 
    my @a;
 
@@ -616,7 +621,7 @@ array for specifying the values uniquely for each sub-task.
 
 If speed is not a concern and wanting to rid of all the MCE->freeze and
 MCE->thaw statements, simply enqueue and dequeue 2 items at a time.
-Or better yet, see L<MCE::Step|MCE::Step> introduced in MCE 1.506.
+Or better yet, see L<MCE::Step> introduced in MCE 1.506.
 
 First, task_end must be updated. The number of undef(s) must match the number
 of workers times the dequeue count. Otherwise, the script will stall.
@@ -687,9 +692,8 @@ Finally, run as usual.
 
 =head1 SYNOPSIS when CHUNK_SIZE EQUALS 1
 
-Although L<MCE::Loop|MCE::Loop> may be preferred for running using a single
-code block, the text below also applies to this module, particularly for the
-first block.
+Although L<MCE::Loop> may be preferred for running using a single code block,
+the text below also applies to this module, particularly for the first block.
 
 All models in MCE default to 'auto' for chunk_size. The arguments for the block
 are the same as writing a user_func block using the Core API.
@@ -770,32 +774,24 @@ choosing 1 for chunk_size is fine.
 
 =head1 OVERRIDING DEFAULTS
 
-The following list 5 options which may be overridden when loading the module.
+The following list options which may be overridden when loading the module.
 
    use Sereal qw( encode_sereal decode_sereal );
    use CBOR::XS qw( encode_cbor decode_cbor );
    use JSON::XS qw( encode_json decode_json );
 
    use MCE::Flow
-         max_workers => 8,               ## Default 'auto'
-         chunk_size => 500,              ## Default 'auto'
-         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
-         freeze => \&encode_sereal,      ## \&Storable::freeze
-         thaw => \&decode_sereal         ## \&Storable::thaw
+         max_workers => 8,                ## Default 'auto'
+         chunk_size => 500,               ## Default 'auto'
+         tmp_dir => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,       ## \&Storable::freeze
+         thaw => \&decode_sereal          ## \&Storable::thaw
    ;
 
-There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise defaults to Storable for
-serialization.
+There is a simpler way to enable Sereal. The following will attempt to use
+Sereal if available, otherwise defaults to Storable for serialization.
 
    use MCE::Flow Sereal => 1;
-
-   MCE::Flow::init {
-      chunk_size => 1
-   };
-
-   ## Serialization is by the Sereal module if available.
-   my %answer = mce_flow sub { MCE->gather( $_, sqrt $_ ) }, 1..10000;
 
 =head1 CUSTOMIZING MCE
 
@@ -850,18 +846,20 @@ both gather and bounds_only options may be specified when calling init
 =back
 
 Like with MCE::Flow::init above, MCE options may be specified using an
-anonymous hash for the first argument. Notice how both max_workers and
-task_name can take an anonymous array for setting values uniquely
-for each code block.
+anonymous hash for the first argument. Notice how task_name, max_workers,
+and use_threads can take an anonymous array for setting uniquely per
+each code block.
 
 Unlike MCE::Stream which processes from right-to-left, MCE::Flow begins
 with the first code block, thus processing from left-to-right.
 
+   use threads;
    use MCE::Flow;
 
    my @a = mce_flow {
       task_name   => [ 'a', 'b', 'c' ],
       max_workers => [  3,   4,   2, ],
+      use_threads => [  1,   0,   0, ],
 
       user_end => sub {
          my ($mce, $task_id, $task_name) = @_;
@@ -908,7 +906,7 @@ An iterator reference can by specified for input_data. The only other way
 is to specify input_data via MCE::Flow::init. This prevents MCE::Flow from
 configuring the iterator reference as another user task which will not work.
 
-Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+Iterators are described under "SYNTAX for INPUT_DATA" at L<MCE::Core>.
 
    MCE::Flow::init {
       input_data => iterator
@@ -952,8 +950,6 @@ optional. The format is passed to sprintf (% may be omitted below).
    mce_flow_s sub { $_ }, {
       begin => $beg, end => $end, step => $step, format => $fmt
    };
-
-=back
 
 The sequence engine can compute 'begin' and 'end' items only, for the chunk,
 and not the items in between (hence boundaries only). This option applies
@@ -1006,6 +1002,8 @@ Time was measured using 1 worker to emphasize the difference.
    6250001 ..  7500000
    7500001 ..  8750000
    8750001 .. 10000000
+
+=back
 
 =head1 GATHERING DATA
 
@@ -1214,7 +1212,7 @@ longer needed.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

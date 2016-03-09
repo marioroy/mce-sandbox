@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Loop - Parallel loop model for building creative loops.
+## Parallel loop model for building creative loops.
 ##
 ###############################################################################
 
@@ -9,15 +9,17 @@ package MCE::Loop;
 use strict;
 use warnings;
 
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
+
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
 
 use Scalar::Util qw( looks_like_number );
-
-use MCE;
-
-our $VERSION  = '1.608';
+use Storable ();
+use MCE::Signal;
 
 our @CARP_NOT = qw( MCE );
 
@@ -27,49 +29,42 @@ our @CARP_NOT = qw( MCE );
 ##
 ###############################################################################
 
-my $MAX_WORKERS = 'auto';
-my $CHUNK_SIZE  = 'auto';
+my ($MAX_WORKERS, $CHUNK_SIZE) = ('auto', 'auto');
 
-my ($_MCE, $_loaded); my ($_params, $_prev_c); my $_tag = 'MCE::Loop';
+my $TMP_DIR = $MCE::Signal::tmp_dir;
+my $FREEZE  = \&Storable::freeze;
+my $THAW    = \&Storable::thaw;
+
+my ($_MCE, $_imported); my ($_params, $_prev_c); my $_tag = 'MCE::Loop';
 
 sub import {
-
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    ## Process module arguments.
    while (my $_argument = shift) {
       my $_arg = lc $_argument;
 
-      $MAX_WORKERS = shift and next if ( $_arg eq 'max_workers' );
-      $CHUNK_SIZE  = shift and next if ( $_arg eq 'chunk_size' );
-
-      $MCE::FREEZE = $MCE::MCE->{freeze} = shift and next
-         if ( $_arg eq 'freeze' );
-      $MCE::THAW = $MCE::MCE->{thaw} = shift and next
-         if ( $_arg eq 'thaw' );
+      $MAX_WORKERS = shift, next if ( $_arg eq 'max_workers' );
+      $CHUNK_SIZE  = shift, next if ( $_arg eq 'chunk_size' );
+      $FREEZE      = shift, next if ( $_arg eq 'freeze' );
+      $THAW        = shift, next if ( $_arg eq 'thaw' );
+      $TMP_DIR     = shift, next if ( $_arg eq 'tmp_dir' );
 
       if ( $_arg eq 'sereal' ) {
          if (shift eq '1') {
             local $@; eval 'use Sereal qw(encode_sereal decode_sereal)';
-            unless ($@) {
-               $MCE::FREEZE = $MCE::MCE->{freeze} = \&encode_sereal;
-               $MCE::THAW = $MCE::MCE->{thaw} = \&decode_sereal;
-            }
+            $FREEZE = \&encode_sereal, $THAW = \&decode_sereal unless $@;
          }
          next;
       }
 
-      if ( $_arg eq 'tmp_dir' ) {
-         $MCE::TMP_DIR = $MCE::MCE->{tmp_dir} = shift;
-         my $_e1 = 'is not a directory or does not exist';
-         my $_e2 = 'is not writeable';
-         _croak($_tag."::import: ($MCE::TMP_DIR) $_e1") unless -d $MCE::TMP_DIR;
-         _croak($_tag."::import: ($MCE::TMP_DIR) $_e2") unless -w $MCE::TMP_DIR;
-         next;
-      }
-
-      _croak($_tag."::import: ($_argument) is not a valid module argument");
+      _croak("Error: ($_argument) invalid module option");
    }
+
+   ## Preload essential modules.
+   require MCE; MCE->import(
+      freeze => $FREEZE, thaw => $THAW, tmp_dir => $TMP_DIR
+   );
 
    $MAX_WORKERS = MCE::Util::_parse_max_workers($MAX_WORKERS);
    _validate_number($MAX_WORKERS, 'MAX_WORKERS');
@@ -105,9 +100,7 @@ sub init (@) {
    shift if (defined $_[0] && $_[0] eq 'MCE::Loop');
 
    if (MCE->wid) {
-      @_ = (); _croak(
-         "$_tag: function cannot be called by the worker process"
-      );
+      @_ = (); _croak("$_tag: (init) is not allowed by the worker process");
    }
 
    finish(); $_params = (ref $_[0] eq 'HASH') ? shift : { @_ };
@@ -120,7 +113,7 @@ sub init (@) {
 sub finish () {
 
    if (defined $_MCE && $_MCE->{_spawned}) {
-      MCE::_save_state; $_MCE->shutdown(); MCE::_restore_state;
+      MCE::_save_state(); $_MCE->shutdown(); MCE::_restore_state();
    }
 
    $_prev_c = undef;
@@ -230,9 +223,7 @@ sub run (&@) {
    my $_code = shift;
 
    if (MCE->wid) {
-      @_ = (); _croak(
-         "$_tag: function cannot be called by the worker process"
-      );
+      @_ = (); _croak("$_tag: (run) is not allowed by the worker process");
    }
 
    my $_input_data; my $_max_workers = $MAX_WORKERS; my $_r = ref $_[0];
@@ -263,7 +254,7 @@ sub run (&@) {
       }
    }
 
-   MCE::_save_state;
+   MCE::_save_state();
 
    ## -------------------------------------------------------------------------
 
@@ -320,13 +311,16 @@ sub run (&@) {
 
    delete $_MCE->{gather} if (defined $_wa);
 
-   MCE::_restore_state;
+   MCE::_restore_state();
 
    if (exists $_MCE->{_rla_return}) {
       $MCE::MCE->{_rla_return} = delete $_MCE->{_rla_return};
    }
 
-   finish() if ($^S);   ## shutdown if in eval state
+   if ($^S) {
+      ## shutdown if in eval state
+      MCE::_save_state(); $_MCE->shutdown(); MCE::_restore_state();
+   }
 
    return ((defined $_wa) ? @_a : ());
 }
@@ -373,14 +367,14 @@ MCE::Loop - Parallel loop model for building creative loops
 
 =head1 VERSION
 
-This document describes MCE::Loop version 1.608
+This document describes MCE::Loop version 1.700
 
 =head1 DESCRIPTION
 
 This module provides a parallel loop implementation through Many-Core Engine.
 MCE::Loop is not MCE::Map but more along the lines of an easy way to spin up a
 MCE instance and have user_func pointing to your code block. If you want
-something similar to map, then see L<MCE::Map|MCE::Map>.
+something similar to map, then see L<MCE::Map>.
 
    ## Construction when chunking is not desired
 
@@ -515,32 +509,24 @@ choosing 1 for chunk_size is fine.
 
 =head1 OVERRIDING DEFAULTS
 
-The following list 5 options which may be overridden when loading the module.
+The following list options which may be overridden when loading the module.
 
    use Sereal qw( encode_sereal decode_sereal );
    use CBOR::XS qw( encode_cbor decode_cbor );
    use JSON::XS qw( encode_json decode_json );
 
    use MCE::Loop
-         max_workers => 4,               ## Default 'auto'
-         chunk_size => 100,              ## Default 'auto'
-         tmp_dir => "/path/to/app/tmp",  ## $MCE::Signal::tmp_dir
-         freeze => \&encode_sereal,      ## \&Storable::freeze
-         thaw => \&decode_sereal         ## \&Storable::thaw
+         max_workers => 4,                ## Default 'auto'
+         chunk_size => 100,               ## Default 'auto'
+         tmp_dir => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
+         freeze => \&encode_sereal,       ## \&Storable::freeze
+         thaw => \&decode_sereal          ## \&Storable::thaw
    ;
 
-There is a simpler way to enable Sereal with MCE 1.5. The following will
-attempt to use Sereal if available, otherwise defaults to Storable for
-serialization.
+There is a simpler way to enable Sereal. The following will attempt to use
+Sereal if available, otherwise defaults to Storable for serialization.
 
    use MCE::Loop Sereal => 1;
-
-   MCE::Loop::init {
-      chunk_size => 1
-   };
-
-   ## Serialization is by the Sereal module if available.
-   my %answer = mce_loop { MCE->gather( $_, sqrt $_ ) } 1..10000;
 
 =head1 CUSTOMIZING MCE
 
@@ -604,7 +590,7 @@ possibilities of passing input data into the code block.
 =item mce_loop { code } iterator
 
 An iterator reference can by specified for input_data. Iterators are described
-under "SYNTAX for INPUT_DATA" at L<MCE::Core|MCE::Core>.
+under "SYNTAX for INPUT_DATA" at L<MCE::Core>.
 
    mce_loop { $_ } make_iterator(10, 30, 2);
 
@@ -644,8 +630,6 @@ optional. The format is passed to sprintf (% may be omitted below).
    mce_loop_s { $_ } {
       begin => $beg, end => $end, step => $step, format => $fmt
    };
-
-=back
 
 The sequence engine can compute 'begin' and 'end' items only, for the chunk,
 and not the items in between (hence boundaries only). This option applies
@@ -698,6 +682,8 @@ Time was measured using 1 worker to emphasize the difference.
    6250001 ..  7500000
    7500001 ..  8750000
    8750001 .. 10000000
+
+=back
 
 =head1 GATHERING DATA
 
@@ -894,7 +880,7 @@ longer needed.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

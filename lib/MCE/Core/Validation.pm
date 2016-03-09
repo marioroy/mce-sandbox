@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Core::Validation - Core validation methods for Many-Core Engine.
+## Core validation methods for Many-Core Engine.
 ##
 ## This package provides validation methods used internally by the manager
 ## process.
@@ -14,15 +14,13 @@ package MCE::Core::Validation;
 use strict;
 use warnings;
 
-our $VERSION = '1.608';
+our $VERSION = '1.700';
 
 ## Items below are folded into MCE.
 
 package MCE;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -47,6 +45,8 @@ sub _validate_args {
       if ($_s->{use_slurpio} && $_s->{use_slurpio} !~ /\A[01]\z/);
    _croak("$_tag: (parallel_io) is not 0 or 1")
       if ($_s->{parallel_io} && $_s->{parallel_io} !~ /\A[01]\z/);
+   _croak("$_tag: (posix_exit) is not 0 or 1")
+      if ($_s->{posix_exit} && $_s->{posix_exit} !~ /\A[01]\z/);
 
    _croak("$_tag: (job_delay) is not valid")
       if ($_s->{job_delay} && (!looks_like_number($_s->{job_delay}) ||
@@ -78,6 +78,9 @@ sub _validate_args {
       if ($_s->{flush_stderr} && $_s->{flush_stderr} !~ /\A[01]\z/);
    _croak("$_tag: (flush_stdout) is not 0 or 1")
       if ($_s->{flush_stdout} && $_s->{flush_stdout} !~ /\A[01]\z/);
+
+   _croak("$_tag: (loop_timeout) is not valid")
+      if ($_s->{loop_timeout} && !looks_like_number($_s->{loop_timeout}));
 
    _validate_args_s($_s);
 
@@ -130,8 +133,11 @@ sub _validate_args_s {
 
    _croak("$_tag: (RS) is not valid")
       if ($_s->{RS} && ref $_s->{RS} ne '');
+   _croak("$_tag: (max_retries) is not valid")
+      if ($_s->{max_retries} && $_s->{max_retries} !~ /\A\d+\z/);
    _croak("$_tag: (use_threads) is not 0 or 1")
       if ($_s->{use_threads} && $_s->{use_threads} !~ /\A[01]\z/);
+
    _croak("$_tag: (user_begin) is not a CODE reference")
       if ($_s->{user_begin} && ref $_s->{user_begin} ne 'CODE');
    _croak("$_tag: (user_func) is not a CODE reference")
@@ -176,6 +182,7 @@ sub _validate_args_s {
             $_s->{sequence}->[2] = $_seq->{step};
          }
       }
+
       if ( ($_seq->{step} < 0 && $_seq->{begin} < $_seq->{end}) ||
            ($_seq->{step} > 0 && $_seq->{begin} > $_seq->{end}) ||
            ($_seq->{step} == 0)
@@ -206,6 +213,7 @@ sub _validate_args_s {
                $_i->{$_p} < 1
             ));
       }
+
       $_i->{max_nodes} = 1 unless (exists $_i->{max_nodes});
       $_i->{node_id}   = 1 unless (exists $_i->{node_id});
       $_i->{_time}     = time;
@@ -226,11 +234,11 @@ sub _validate_runstate {
 
    @_ = ();
 
-   _croak("$_tag: method cannot be called by the worker process")
+   _croak("$_tag: method is not allowed by the worker process")
       if ($self->{_wid});
-   _croak("$_tag: method cannot be called while processing")
+   _croak("$_tag: method is not allowed while processing")
       if ($self->{_send_cnt});
-   _croak("$_tag: method cannot be called while running")
+   _croak("$_tag: method is not allowed while running")
       if ($self->{_total_running});
 
    return;

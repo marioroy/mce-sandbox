@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Mutex - Simple semaphore for Many-Core Engine.
+## Locking for Many-Core Engine.
 ##
 ###############################################################################
 
@@ -9,28 +9,33 @@ package MCE::Mutex;
 use strict;
 use warnings;
 
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
 
 use MCE::Util qw( $LF );
-use bytes;
 
-our $VERSION = '1.608';
+our @CARP_NOT = qw( MCE::Shared MCE );
+
+my $_has_threads = $INC{'threads.pm'} ? 1 : 0;
+my $_tid = $_has_threads ? threads->tid() : 0;
+
+sub CLONE {
+   $_tid = threads->tid();
+   return;
+}
 
 sub DESTROY {
+   my ($_obj, $_arg) = @_;
+   my $_pid = $_has_threads ? $$ .'.'. $_tid : $$;
 
-   my ($_mutex, $_arg) = @_;
-   my $_id = $INC{'threads.pm'} ? $$ .'.'. threads->tid() : $$;
+   $_obj->unlock() if ($_obj->{ $_pid });
 
-   $_mutex->unlock() if ($_mutex->{ $_id });
-
-   if (!defined $_arg || $_arg ne 'shutdown') {
-      return if (defined $MCE::VERSION && !defined $MCE::MCE->{_wid});
-      return if (defined $MCE::MCE && $MCE::MCE->{_wid});
+   if ($_arg eq 'shutdown' || $_obj->{'init_pid'} eq $_pid) {
+      ($^O eq 'MSWin32')
+         ? MCE::Util::_destroy_pipes($_obj, qw(_w_sock _r_sock))
+         : MCE::Util::_destroy_socks($_obj, qw(_w_sock _r_sock));
    }
-
-   MCE::Util::_destroy_sockets($_mutex, qw(_w_sock _r_sock));
 
    return;
 }
@@ -42,58 +47,59 @@ sub DESTROY {
 ###############################################################################
 
 sub new {
+   my ($_class, %_argv) = @_; my $_obj = { %_argv };
 
-   my ($_class, %_argv) = @_;   @_ = ();
-   my $_mutex = {}; bless($_mutex, ref($_class) || $_class);
+   $_obj->{'init_pid'} = $_has_threads ? $$ .'.'. $_tid : $$;
 
-   MCE::Util::_make_socket_pair($_mutex, qw(_w_sock _r_sock));
+   ($^O eq 'MSWin32')
+      ? MCE::Util::_pipe_pair($_obj, qw(_r_sock _w_sock))
+      : MCE::Util::_sock_pair($_obj, qw(_r_sock _w_sock));
 
-   syswrite($_mutex->{_w_sock}, '0');
+   1 until syswrite($_obj->{_w_sock}, '0');
 
-   return $_mutex;
+   return bless($_obj, $_class);
 }
 
 sub lock {
+   my ($_obj) = @_;
+   my $_pid = $_has_threads ? $$ .'.'. $_tid : $$;
 
-   my $_mutex = shift;
-   my $_id    = $INC{'threads.pm'} ? $$ .'.'. threads->tid() : $$;
-
-   unless ($_mutex->{ $_id }) {
-      sysread($_mutex->{_r_sock}, my $_b, 1);
-      $_mutex->{ $_id } = 1;
+   unless ($_obj->{ $_pid }) {
+      1 until sysread($_obj->{_r_sock}, my $_b, 1);
+      $_obj->{ $_pid } = 1;
    }
 
    return;
 }
 
 sub unlock {
+   my ($_obj) = @_;
+   my $_pid = $_has_threads ? $$ .'.'. $_tid : $$;
 
-   my $_mutex = shift;
-   my $_id    = $INC{'threads.pm'} ? $$ .'.'. threads->tid() : $$;
-
-   if ($_mutex->{ $_id }) {
-      syswrite($_mutex->{_w_sock}, '0');
-      $_mutex->{ $_id } = 0;
+   if ($_obj->{ $_pid }) {
+      1 until syswrite($_obj->{_w_sock}, '0');
+      $_obj->{ $_pid } = 0;
    }
 
    return;
 }
 
 sub synchronize {
+   my ($_obj, $_code) = (shift, shift);
 
-   my ($_mutex, $_code) = (shift, shift);
+   return if (ref $_code ne 'CODE');
 
-   if (ref $_code eq 'CODE') {
-      if (defined wantarray) {
-         $_mutex->lock();   my @_a = $_code->(@_);
-         $_mutex->unlock();
+   if (defined wantarray) {
+      $_obj->lock();
+      my @_a = $_code->(@_);
+      $_obj->unlock();
 
-         return wantarray ? @_a : $_a[0];
-      }
-      else {
-         $_mutex->lock();   $_code->(@_);
-         $_mutex->unlock();
-      }
+      return wantarray ? @_a : $_a[0];
+   }
+   else {
+      $_obj->lock();
+      $_code->(@_);
+      $_obj->unlock();
    }
 
    return;
@@ -111,11 +117,11 @@ __END__
 
 =head1 NAME
 
-MCE::Mutex - Simple semaphore for Many-Core Engine
+MCE::Mutex - Locking for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Mutex version 1.608
+This document describes MCE::Mutex version 1.700
 
 =head1 SYNOPSIS
 
@@ -159,6 +165,10 @@ The inspiration for this module came from reading Mutex for Ruby.
 
 Creates a new mutex.
 
+Channel locking is through a pipe or socket depending on platform.
+The advantage of channel locking is not having to re-establish handles
+inside new processes or threads.
+
 =head2 $m->lock ( void )
 
 Attempts to grab the lock and waits if not available. Multiple calls to
@@ -173,7 +183,7 @@ automatically.
 =head2 $m->synchronize ( sub { ... }, @_ )
 
 Obtains a lock, runs the code block, and releases the lock after the block
-completes. Optionally, the method is wantarray aware.
+completes. Optionally, the method is C<wantarray> aware.
 
    my $value = $m->synchronize( sub {
 
@@ -184,7 +194,7 @@ completes. Optionally, the method is wantarray aware.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 

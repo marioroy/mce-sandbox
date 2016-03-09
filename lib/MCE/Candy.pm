@@ -1,6 +1,6 @@
 ###############################################################################
 ## ----------------------------------------------------------------------------
-## MCE::Candy - Sugar methods and output iterators for Many-Core Engine.
+## Sugar methods and output iterators.
 ##
 ###############################################################################
 
@@ -9,15 +9,11 @@ package MCE::Candy;
 use strict;
 use warnings;
 
-our $VERSION  = '1.608';
+no warnings qw( threads recursion uninitialized );
+
+our $VERSION = '1.700';
 
 our @CARP_NOT = qw( MCE );
-
-no warnings 'threads';
-no warnings 'recursion';
-no warnings 'uninitialized';
-
-use bytes;
 
 ###############################################################################
 ## ----------------------------------------------------------------------------
@@ -25,11 +21,11 @@ use bytes;
 ##
 ###############################################################################
 
-my $_loaded;
+my $_imported;
 
 sub import {
 
-   my $_class = shift; return if ($_loaded++);
+   my $_class = shift; return if ($_imported++);
 
    unless (defined $MCE::VERSION) {
       $\ = undef; require Carp;
@@ -209,11 +205,11 @@ __END__
 
 =head1 NAME
 
-MCE::Candy - Sugar methods and output iterators for Many-Core Engine
+MCE::Candy - Sugar methods and output iterators
 
 =head1 VERSION
 
-This document describes MCE::Candy version 1.608
+This document describes MCE::Candy version 1.700
 
 =head1 DESCRIPTION
 
@@ -525,7 +521,7 @@ processing input data.
 
 =head1 INDEX
 
-L<MCE|MCE>
+L<MCE|MCE>, L<MCE::Core>, L<MCE::Shared>
 
 =head1 AUTHOR
 
