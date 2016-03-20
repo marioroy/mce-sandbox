@@ -11,13 +11,13 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.702';
+our $VERSION = '1.703';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
 
-use Scalar::Util qw( looks_like_number );
+use Scalar::Util qw( looks_like_number weaken );
 use Storable ();
 use MCE::Signal;
 
@@ -299,6 +299,7 @@ sub run (&@) {
                   binmode $_MEM_FH, ':raw';
                   while (<$_MEM_FH>) { push (@_a, $_) if &{ $_code }; }
                   close   $_MEM_FH;
+                  weaken  $_MEM_FH;
                }
                else {
                   if (ref $_chunk_ref) {
@@ -319,6 +320,7 @@ sub run (&@) {
                   binmode $_MEM_FH, ':raw';
                   while (<$_MEM_FH>) { $_cnt++ if &{ $_code }; }
                   close   $_MEM_FH;
+                  weaken  $_MEM_FH;
                }
                else {
                   if (ref $_chunk_ref) {
@@ -444,7 +446,7 @@ MCE::Grep - Parallel grep model similar to the native grep function
 
 =head1 VERSION
 
-This document describes MCE::Grep version 1.702
+This document describes MCE::Grep version 1.703
 
 =head1 SYNOPSIS
 

@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.702';
+our $VERSION = '1.703';
 
 use MCE::Util qw( $LF );
 
@@ -19,8 +19,7 @@ my $_has_threads = $INC{'threads.pm'} ? 1 : 0;
 my $_tid = $_has_threads ? threads->tid() : 0;
 
 sub CLONE {
-   $_tid = threads->tid();
-   return;
+   $_tid = threads->tid() if $_has_threads;
 }
 
 sub DESTROY {
@@ -119,7 +118,7 @@ MCE::Mutex - Locking for Many-Core Engine
 
 =head1 VERSION
 
-This document describes MCE::Mutex version 1.702
+This document describes MCE::Mutex version 1.703
 
 =head1 SYNOPSIS
 
