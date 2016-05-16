@@ -102,7 +102,9 @@ sub o_iter
 
    return sub {
 
-      syswrite(\*STDERR, "  " . int($progress += $inc) . "%\r");
+      if ($show_progress) {
+         syswrite(\*STDERR, "  " . int($progress += $inc) . "%\r");
+      }
 
       if ($run_mode != MODE_PRINT) {
          $N_agg += $_[0];
