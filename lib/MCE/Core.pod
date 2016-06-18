@@ -5,7 +5,7 @@ MCE::Core - Documentation describing the core MCE API
 
 =head1 VERSION
 
-This document describes MCE::Core version 1.708
+This document describes MCE::Core version 1.800
 
 =head1 SYNOPSIS
 
@@ -361,11 +361,11 @@ The following list options which may be overridden when loading the module.
    use JSON::XS qw( encode_json decode_json );
 
    use MCE
-         max_workers => 4,                ## Default 1
-         chunk_size => 100,               ## Default 1
-         tmp_dir => "/path/to/app/tmp",   ## $MCE::Signal::tmp_dir
-         freeze => \&encode_sereal,       ## \&Storable::freeze
-         thaw => \&decode_sereal          ## \&Storable::thaw
+       max_workers => 4,                  ## Default 1
+       chunk_size => 100,                 ## Default 1
+       tmp_dir => "/path/to/app/tmp",     ## $MCE::Signal::tmp_dir
+       freeze => \&encode_sereal,         ## \&Storable::freeze
+       thaw => \&decode_sereal            ## \&Storable::thaw
    ;
 
    my $mce = MCE->new( ... );
@@ -374,6 +374,9 @@ There is a simpler way to enable Sereal. The following will attempt to use
 Sereal if available, otherwise defaults to Storable for serialization.
 
    use MCE Sereal => 1;
+
+From MCE 1.800 onwards, this is done automatically if Sereal 3.008 or later
+is installed. Specify Sereal => 0 if Storable is desired.
 
 =head2 RUNNING
 
@@ -1252,8 +1255,7 @@ Getter method for chunk_size used by MCE.
 =head2 $mce->freeze ( $object_ref )
 
 Calls the internal freeze method to serialize an object. The default
-serialization routines are handled by Storable. Both freeze and thaw
-can be overridden when including MCE.
+serialization routines are handled by Sereal if available or Storable.
 
    my $frozen = $mce->freeze([ 0, 2, 4 ]);
    my $frozen = MCE->freeze([ 0, 2, 4 ]);
@@ -1412,7 +1414,7 @@ Do the following if wanting workers to persist between jobs.
 
 =head2 $mce->relay_final ( void )
 
-Desribed in L<MCE::Relay>.
+Described in L<MCE::Relay>.
 
 =head2 $mce->restart_worker ( void )
 
@@ -1799,7 +1801,7 @@ reference.
 
 =head2 $mce->relay_recv ( void )
 
-Desribed in L<MCE::Relay>.
+Described in L<MCE::Relay>.
 
 =head2 $mce->sendto ( $to, $arg1, ... )
 
