@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.800';
+our $VERSION = '1.802';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -84,10 +84,6 @@ sub import {
    return;
 }
 
-END {
-   %{ $_MCE } = ();
-}
-
 ###############################################################################
 ## ----------------------------------------------------------------------------
 ## Gather callback for storing by chunk_id => chunk_ref into a hash.
@@ -129,18 +125,18 @@ sub finish (@) {
    shift if (defined $_[0] && $_[0] eq 'MCE::Grep');
    my $_pkg = (defined $_[0]) ? shift : "$$.$_tid.".caller();
 
-   if ( $_pkg eq 'MCE::Shared::Server' ) {
-      MCE::Grep->finish($_, 1) for ( keys %{ $_MCE } );
-      %{ $_MCE } = ();
+   if ( $_pkg eq 'MCE' ) {
+      for my $_k ( keys %{ $_MCE } ) { MCE::Grep->finish($_k, 1); }
    }
-   elsif ( exists $_MCE->{$_pkg} ) {
-      MCE::_save_state(), $_MCE->{$_pkg}->shutdown(@_), MCE::_restore_state()
-         if $_MCE->{$_pkg}{_spawned};
-
+   elsif ( $_MCE->{$_pkg} && $_MCE->{$_pkg}{_init_pid} eq "$$.$_tid" ) {
+      $_MCE->{$_pkg}->shutdown(@_) if $_MCE->{$_pkg}{_spawned};
       $_total_chunks = undef, undef %_tmp;
 
       delete $_prev_c->{$_pkg};
+      delete $_MCE->{$_pkg};
    }
+
+   @_ = ();
 
    return;
 }
@@ -395,11 +391,11 @@ sub run (&@) {
       }
    }
 
-   if ($^S || $ENV{'PERL_IPERL_RUNNING'} || $INC{'MCE/Hobo.pm'}) {
+   MCE::_restore_state();
+
+   if ($^S || $ENV{'PERL_IPERL_RUNNING'}) {
       $_MCE->{$_pid}->shutdown(); # shutdown if in eval state
    }
-
-   MCE::_restore_state();
 
    if ($_wantarray) {
       return map { @{ $_ } } delete @_tmp{ 1 .. $_total_chunks };
@@ -453,7 +449,7 @@ MCE::Grep - Parallel grep model similar to the native grep function
 
 =head1 VERSION
 
-This document describes MCE::Grep version 1.800
+This document describes MCE::Grep version 1.802
 
 =head1 SYNOPSIS
 
@@ -609,13 +605,10 @@ The following list options which may be overridden when loading the module.
        thaw => \&decode_sereal          # \&Storable::thaw
    ;
 
-There is a simpler way to enable Sereal. The following will attempt to use
-Sereal if available, otherwise defaults to Storable for serialization.
+From MCE 1.8 onwards, Sereal 3.008+ is loaded automatically if available with
+Perl 5.12 or later. Specify C<Sereal => 0> if Storable is desired instead.
 
-   use MCE::Grep Sereal => 1;
-
-From MCE 1.800 onwards, this is done automatically if Sereal 3.008 or later
-is installed. Specify Sereal => 0 if Storable is desired.
+   use MCE::Grep Sereal => 0;
 
 =head1 CUSTOMIZING MCE
 
