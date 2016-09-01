@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.803';
+our $VERSION = '1.805';
 
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
 ## no critic (TestingAndDebugging::ProhibitNoStrict)
@@ -1151,7 +1151,7 @@ sub _mce_m_dequeue {
 
    $_Q->{_nb_flag} = 0;
 
-   return @_items if (defined $_cnt);
+   return @_items if (defined $_cnt && $_cnt ne '1');
    return $_buf;
 }
 
@@ -1637,7 +1637,7 @@ MCE::Queue - Hybrid (normal and priority) queues
 
 =head1 VERSION
 
-This document describes MCE::Queue version 1.803
+This document describes MCE::Queue version 1.805
 
 =head1 SYNOPSIS
 
