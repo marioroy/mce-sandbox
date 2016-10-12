@@ -5,7 +5,7 @@ MCE::Examples - Various examples and demonstrations
 
 =head1 VERSION
 
-This document describes MCE::Examples version 1.805
+This document describes MCE::Examples version 1.806
 
 =head1 INCLUDED WITH THE DISTRIBUTION
 
@@ -796,7 +796,7 @@ for C<IO::TieCombine> must be C<stdout> or C<stderr> for MCE->print to work.
       print "ordered: no\n";
    }
 
-   -- Ouput
+   -- Output
 
    ordered: yes
 

@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.805';
+our $VERSION = '1.806';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -312,7 +312,7 @@ sub run (@) {
    my $_r = ref $_[0];
 
    if ($_r eq 'ARRAY' || $_r eq 'GLOB' || $_r eq 'SCALAR' || $_r =~ /^IO::/) {
-      $_input_data = shift;
+      $_input_data = shift if (@_ == 1);
    }
 
    if (defined (my $_p = $_params->{$_pid})) {
@@ -499,7 +499,7 @@ MCE::Flow - Parallel flow model for building creative applications
 
 =head1 VERSION
 
-This document describes MCE::Flow version 1.805
+This document describes MCE::Flow version 1.806
 
 =head1 DESCRIPTION
 
