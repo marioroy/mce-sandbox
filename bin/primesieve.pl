@@ -188,7 +188,8 @@ BEGIN {
 
 use Inline 'C' => Config => LIBS => "${_lib_flgs}" =>
    CCFLAGSEX => "${_cc_flgs} -O2 -fomit-frame-pointer",
-   TYPEMAPS => "${base_dir}/src/typemap";
+   TYPEMAPS => "${base_dir}/src/typemap",
+   clean_after_build => 0;
 
 use Inline 'C' => "${base_dir}/src/primesieve.c";
 

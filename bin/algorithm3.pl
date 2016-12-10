@@ -187,7 +187,8 @@ BEGIN {
 
 use Inline 'C' => Config =>
    CCFLAGSEX => "-I${base_dir}/src -O2 -fsigned-char -fomit-frame-pointer",
-   TYPEMAPS => "${base_dir}/src/typemap";
+   TYPEMAPS => "${base_dir}/src/typemap",
+   clean_after_build => 0;
 
 use Inline 'C' => "${base_dir}/src/algorithm3.c";
 
