@@ -87,18 +87,11 @@ sub o_iter
 {
    my ($F, $N, $step_size, $quiet_flag, $run_mode) = @_;
 
-   my (%cache, $file, $fh, $n_read, $buf, $order_id);
    my ($completed, $inc, $progress) = (1, 99.0, 0.0);
    my $show_progress = $quiet_flag ? 0 : 1;
+   my $file;
 
-   $inc = 99.0 / (($N - $F) / $step_size)
-      if ($N - $F >= $step_size);
-
-   if ($run_mode == MODE_PRINT) {
-      $buf = sprintf("%49152s", "");
-      keys(%cache) = 256;
-      $order_id = 1;
-   }
+   $inc = 99.0 / (($N - $F) / $step_size) if ($N - $F >= $step_size);
 
    return sub {
 
@@ -108,35 +101,41 @@ sub o_iter
 
       if ($run_mode != MODE_PRINT) {
          $N_agg += $_[0];
-         return;
       }
-
-      $cache{$_[0]} = 1;
-
-      while (exists $cache{$order_id}) {
-         $file = MCE->tmp_dir() . "/$order_id";
-
-         if (-s $file) {
-            $N_agg = 1;
-            sysopen($fh, $file, O_RDONLY);
-            syswrite(\*STDERR, "      \r") if $order_id == 1;
-
-            while (1) {
-               $n_read = sysread($fh, $buf, 49152);
-               last if $n_read == 0;
-
-               syswrite(\*STDOUT, $buf, $n_read);
-            }
-
-            close($fh);
-         }
-
+      else {
+         $file = MCE->tmp_dir() . "/$_[0]";
+         $N_agg = 1 if -s $file;
          unlink $file;
-         delete $cache{$order_id++};
       }
 
       return;
    };
+}
+
+###############################################################################
+## ----------------------------------------------------------------------------
+## Display prime numbers to STDOUT.
+##
+###############################################################################
+
+sub display
+{
+   my ($chunk_id, $file) = @_;
+   my ($fh, $n_read, $buf);
+
+   if (-s $file) {
+      syswrite(\*STDERR, "      \r") if $chunk_id == 1;
+      sysopen($fh, $file, O_RDONLY);
+      $buf = sprintf("%49152s", "");
+
+      while (1) {
+         $n_read = sysread($fh, $buf, 49152, 0);
+         last if $n_read == 0;
+         syswrite(\*STDOUT, $buf, $n_read);
+      }
+
+      close $fh;
+   }
 }
 
 ###############################################################################

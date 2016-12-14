@@ -218,6 +218,7 @@ my $mce = MCE->new(
 
    max_workers => (($F == $N) ? 1 : $max_workers),
    use_threads => $use_threads,
+   init_relay => 1,
 
    user_func => sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;
@@ -252,9 +253,14 @@ my $mce = MCE->new(
          last if ($limit - $low < $sieve_size);
       }
 
-      close $output_fh if $run_mode == MODE_PRINT;
-
-      MCE->gather(($run_mode == MODE_PRINT) ? $chunk_id : $n_agg);
+      if ($run_mode == MODE_PRINT) {
+         close $output_fh;
+         MCE::relay { Sandbox::display($chunk_id, "$tmp_dir/$chunk_id") };
+         MCE->gather($chunk_id);
+      }
+      else {
+         MCE->gather($n_agg);
+      }
 
       return;
    }
