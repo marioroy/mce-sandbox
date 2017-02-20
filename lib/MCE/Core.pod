@@ -5,7 +5,7 @@ MCE::Core - Documentation describing the core MCE API
 
 =head1 VERSION
 
-This document describes MCE::Core version 1.812
+This document describes MCE::Core version 1.814
 
 =head1 SYNOPSIS
 
@@ -174,8 +174,9 @@ Below, a new instance is configured with all available options.
          # from shared storage.
 
          # Set posix_exit to avoid all END and destructor processing for
-         # non-threads spawned via fork. This is set automatically to 1
-         # if (F)CGI.pm, Gearman::XS, Mojo::IOLoop, or Tk is present.
+         # non-threads spawned via fork. Constructing MCE inside a thread
+         # implies posix_exit => 1 or if present CGI.pm, FCGI.pm, Tk,
+         # Gearman::Util, Gearman::XS, or Mojo::IOLoop.
 
          # Enable slurpio to pass the raw chunk (scalar ref) to the user
          # function when reading input files.
@@ -207,14 +208,20 @@ Below, a new instance is configured with all available options.
          # Specify job_delay when wanting to stagger
          # workers connecting to a database.
 
-      on_post_exit  => \&on_post_exit,    ## Default undef
-      on_post_run   => \&on_post_run,     ## Default undef
+      on_post_exit => \&on_post_exit,     ## Default undef
+      on_post_run  => \&on_post_run,      ## Default undef
 
          # Execute code block after a worker exits or dies.
          # MCE->exit, exit, or die
 
          # Execute code block after running.
          # MCE->process or MCE->run
+
+      progress => sub { ... },            ## Default undef
+
+         # A code block for receiving info on progress made.
+         # See section labeled "PROGRESS DEMONSTRATIONS"
+         # at the end of this document.
 
       user_args => { env => 'test' },     ## Default undef
 
@@ -2108,6 +2115,281 @@ uses 2 workers to minimize the output size. Input is from the sequence option.
    Node  4: 1374807979.84636 -- Worker  2:      0.80000 -- Seq_N  24
 
 The interval.pl example above is included with MCE.
+
+=head1 PROGRESS DEMONSTRATIONS
+
+The C<progress> option takes a code block for receiving info on the progress
+made while processing input data; e.g. C<input_data> or C<sequence>. To make
+this work, one provides the C<progress> option a closure block like so, passing
+along the size of the input_data; e.g C<scalar @array> or C<-s /path/to/file>.
+
+Current API available since 1.813.
+
+A worker, upon completing processing its chunk, notifies the manager-process
+with the size of the chunk. That could be the number of rows or literally the
+size of the chunk when processing an input file. The manager-process accumulates
+the size before calling the code block associated with the C<progress> option.
+
+When running many tasks simultaneously, via C<user_tasks>, the call is initiated
+by workers at level 0 only or rather the first task, not shown here.
+
+   use Time::HiRes 'sleep';
+   use MCE;
+
+   sub make_progress {
+      my ($total_size) = @_;
+      return sub {
+         my ($completed_size) = @_;
+         printf "%0.1f%%\n", $completed_size / $total_size * 100;
+      };
+   }
+
+   my @input = (1..150);
+
+   MCE->new(
+      chunk_size  => 10,
+      max_workers => 4,
+      input_data  => \@input,
+      progress    => make_progress( scalar @input ),
+      user_func   => sub { sleep 1.5 }
+   )->run();
+
+   -- Output
+
+   6.7%
+   13.3%
+   20.0%
+   26.7%
+   33.3%
+   40.0%
+   46.7%
+   53.3%
+   60.0%
+   66.7%
+   73.3%
+   80.0%
+   86.7%
+   93.3%
+   100.0%
+
+Next is the code using L<MCE::Flow> and L<ProgressBar::Stack> to do the
+same thing, practically.
+
+   use Time::HiRes 'sleep';
+   use ProgressBar::Stack;
+   use MCE::Flow;
+
+   sub make_progress {
+      my ($total_size) = @_;
+      init_progress();
+      return sub {
+         my ($completed_size) = @_;
+         update_progress sprintf("%0.1f", $completed_size / $total_size * 100);
+      };
+   }
+
+   my @input = (1..150);
+
+   MCE::Flow->init(
+      chunk_size  => 10,
+      max_workers => 4,
+      progress    => make_progress( scalar @input )
+   );
+
+   MCE::Flow->run( sub { sleep 1.5 }, \@input );
+   MCE::Flow->finish();
+
+   print "\n";
+
+   -- Output
+
+   [################    ]  80.0% ETA: 0:01
+
+For sequence of numbers, using the C<sequence> option, one must account for
+C<step_size>, typically set to C<1> automatically.
+
+   use Time::HiRes 'sleep';
+   use MCE;
+
+   sub make_progress {
+      my ($total_size) = @_;
+      return sub {
+         my ($completed_size) = @_;
+         printf "%0.1f%%\n", $completed_size / $total_size * 100;
+      };
+   }
+
+   MCE->new(
+      chunk_size  => 10,
+      max_workers => 4,
+      sequence    => [ 1, 100, 2 ],
+      progress    => make_progress( int( 100 / 2 + 0.5 ) ),
+      user_func   => sub { sleep 1.5 }
+   )->run();
+
+   -- Output
+
+   20.0%
+   40.0%
+   60.0%
+   80.0%
+   100.0%
+
+Changing C<chunk_size> to C<1> means workers notify the manager process more
+often, thus increasing granularity. Take a look at the output.
+
+   2.0%
+   4.0%
+   6.0%
+   8.0%
+   10.0%
+   ...
+   92.0%
+   94.0%
+   96.0%
+   98.0%
+   100.0%
+
+Here is the same thing using L<MCE::Flow> together with L<ProgressBar::Stack>.
+
+   use Time::HiRes 'sleep';
+   use ProgressBar::Stack;
+   use MCE::Flow;
+
+   sub make_progress {
+      my ($total_size) = @_;
+      init_progress();
+      return sub {
+         my ($completed_size) = @_;
+         update_progress sprintf("%0.1f", $completed_size / $total_size * 100);
+      };
+   }
+
+   MCE::Flow->init(
+      chunk_size  => 1,
+      max_workers => 4,
+      progress    => make_progress( int( 100 / 2 + 0.5 ) )
+   );
+
+   MCE::Flow->run_seq( sub { sleep 0.5 }, 1, 100, 2 );
+   MCE::Flow->finish();
+
+   print "\n";
+
+   -- Output
+
+   [#########           ]  48.0% ETA: 0:03
+
+For files and file handles, workers send the actual size of the data read
+versus counting rows.
+
+   use Time::HiRes 'sleep';
+   use MCE;
+
+   sub make_progress {
+      my ($total_size) = @_;
+      return sub {
+         my ($completed_size) = @_;
+         printf "%0.1f%%\n", $completed_size / $total_size * 100;
+      };
+   }
+
+   my $input_file = "/path/to/input_file.txt";
+
+   MCE->new(
+      chunk_size  => 5,
+      max_workers => 4,
+      input_data  => $input_file,
+      progress    => make_progress( -s $input_file ),
+      user_func   => sub { sleep 0.03 }
+   )->run();
+
+For consistency, here is the example using L<MCE::Flow>, again with
+L<ProgressBar::Stack>.
+
+   use Time::HiRes 'sleep';
+   use ProgressBar::Stack;
+   use MCE::Flow;
+
+   sub make_progress {
+      my ($total_size) = @_;
+      init_progress();
+      return sub {
+         my ($completed_size) = @_;
+         update_progress sprintf("%0.1f", $completed_size / $total_size * 100);
+      };
+   }
+
+   my $input_file = "/path/to/input_file.txt";
+
+   MCE::Flow->init(
+      chunk_size  => 5,
+      max_workers => 4,
+      progress    => make_progress( -s $input_file )
+   );
+
+   MCE::Flow->run_file( sub { sleep 0.03 }, $input_file );
+   MCE::Flow->finish();
+
+The next demonstration processes three arrays consecutively. For this one, MCE
+workers persist after running. This needs MCE 1.814 or later to run. Otherwise,
+the progress output is not shown in MCE 1.813.
+
+   use Time::HiRes 'sleep';
+   use ProgressBar::Stack;
+   use MCE;
+
+   sub make_progress {
+      my ($total_size, $message) = @_;
+      init_progress();
+      return sub {
+         my ($completed_size) = @_;
+         update_progress(
+            sprintf("%0.1f", $completed_size / $total_size * 100),
+            $message
+         );
+      };
+   }
+
+   my $mce = MCE->new(
+      chunk_size  => 10,
+      max_workers => 4,
+      user_func   => sub { sleep 0.5 }
+   )->spawn();
+
+   my @a1 = ( 1 .. 200 );
+   my @a2 = ( 1 .. 500 );
+   my @a3 = ( 1 .. 300 );
+
+   $mce->process({ progress => make_progress(scalar(@a1), "array 1") }, \@a1);
+
+   print "\n";
+
+   $mce->process({ progress => make_progress(scalar(@a2), "array 2") }, \@a2);
+
+   print "\n";
+
+   $mce->process({ progress => make_progress(scalar(@a3), "array 3") }, \@a3);
+
+   print "\n";
+
+   $mce->shutdown;
+
+   -- Output
+
+   [####################] 100.0% ETA: 0:00 array 1
+   [####################] 100.0% ETA: 0:00 array 2
+   [####################] 100.0% ETA: 0:00 array 3
+
+When size is not know, such as reading from C<STDIN>, the only thing one
+can do is report the size completed thus far.
+
+   # 1 kibibyte equals 1024 bytes
+
+   progress => sub {
+      my ($completed_size) = @_;
+      printf "%0.1f kibibytes\n", $completed_size / 1024;
+   }
 
 =head1 INDEX
 

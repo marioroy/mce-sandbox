@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.812';
+our $VERSION = '1.814';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -106,14 +106,14 @@ BEGIN {
       flush_file flush_stderr flush_stdout stderr_file stdout_file use_slurpio
       interval user_args user_begin user_end user_func user_error user_output
       bounds_only gather init_relay on_post_exit on_post_run parallel_io
-      loop_timeout max_retries posix_exit
+      loop_timeout max_retries progress posix_exit
    );
    %_params_allowed_args = map { $_ => 1 } qw(
       chunk_size input_data sequence job_delay spawn_delay submit_delay RS
       flush_file flush_stderr flush_stdout stderr_file stdout_file use_slurpio
       interval user_args user_begin user_end user_func user_error user_output
       bounds_only gather init_relay on_post_exit on_post_run parallel_io
-      loop_timeout max_retries
+      loop_timeout max_retries progress
    );
    %_valid_fields_task = map { $_ => 1 } qw(
       max_workers chunk_size input_data interval sequence task_end task_name
@@ -255,6 +255,7 @@ use constant {
    OUTPUT_B_SYN   => 'B~SYN',  # Barrier sync - begin
    OUTPUT_E_SYN   => 'E~SYN',  # Barrier sync - end
    OUTPUT_S_IPC   => 'S~IPC',  # Change to win32 IPC
+   OUTPUT_P_NFY   => 'P~NFY',  # Progress notification
 
    READ_FILE      => 0,        # Worker reads file handle
    READ_MEMORY    => 1,        # Worker reads memory handle
@@ -995,13 +996,14 @@ sub run {
       my  $_submit_delay = $self->{submit_delay};
 
       my %_params = (
-         '_abort_msg'   => $_abort_msg,  '_run_mode'   => $_run_mode,
-         '_input_file'  => $_input_file, '_chunk_size' => $_chunk_size,
+         '_abort_msg'   => $_abort_msg,  '_chunk_size' => $_chunk_size,
+         '_input_file'  => $_input_file, '_run_mode'   => $_run_mode,
          '_single_dim'  => $_single_dim,
          '_bounds_only' => $self->{bounds_only},
          '_interval'    => $self->{interval},
          '_max_retries' => $self->{max_retries},
          '_parallel_io' => $self->{parallel_io},
+         '_progress'    => $self->{progress} ? 1 : 0,
          '_sequence'    => $self->{sequence},
          '_user_args'   => $self->{user_args},
          '_use_slurpio' => $self->{use_slurpio},
