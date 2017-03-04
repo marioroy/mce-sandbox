@@ -14,7 +14,7 @@ package MCE::Core::Worker;
 use strict;
 use warnings;
 
-our $VERSION = '1.818';
+our $VERSION = '1.819';
 
 ## Items below are folded into MCE.
 
@@ -297,7 +297,8 @@ use bytes;
       }
 
       {
-         local ($|, $!);
+         local $!;
+         # IO::Handle->autoflush not available in older Perl.
          select(( select(*STDERR), $| = 1 )[0]) if defined(fileno *STDERR);
          select(( select(*STDOUT), $| = 1 )[0]) if defined(fileno *STDOUT);
       }
