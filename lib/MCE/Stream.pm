@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.819';
+our $VERSION = '1.820';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -431,9 +431,9 @@ sub run (@) {
 
    ## -------------------------------------------------------------------------
 
-   MCE::_save_state();
+   MCE::_save_state($_MCE->{$_pid});
 
-   if ($_init_mce) {
+   if ($_init_mce || !exists $_queue->{$_pid}) {
       $_MCE->{$_pid}->shutdown() if (defined $_MCE->{$_pid});
       $_queue->{$_pid} = [] if (!defined $_queue->{$_pid});
 
@@ -520,13 +520,10 @@ sub run (@) {
 
    MCE::_restore_state();
 
-   # auto-shutdown if in eval state
-   if ($^S || $ENV{'PERL_IPERL_RUNNING'}) {
-      if (!$INC{'Mojo/IOLoop.pm'} && !$INC{'Tk.pm'}) {
-         $_MCE->{$_pid}->shutdown();
-         $_->DESTROY() for @{ $_queue->{$_pid} };
-         delete $_queue->{$_pid};
-      }
+   # destroy queue(s) if MCE::run requested workers to shutdown
+   if (!$_MCE->{$_pid}{_spawned}) {
+      $_->DESTROY() for @{ $_queue->{$_pid} };
+      delete $_queue->{$_pid};
    }
 
    return map { @{ $_ } } delete @_tmp{ 1 .. $_order_id - 1 }
@@ -682,7 +679,7 @@ MCE::Stream - Parallel stream model for chaining multiple maps and greps
 
 =head1 VERSION
 
-This document describes MCE::Stream version 1.819
+This document describes MCE::Stream version 1.820
 
 =head1 SYNOPSIS
 

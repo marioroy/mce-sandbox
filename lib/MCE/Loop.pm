@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.819';
+our $VERSION = '1.820';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -257,7 +257,7 @@ sub run (&@) {
 
    ## -------------------------------------------------------------------------
 
-   MCE::_save_state();
+   MCE::_save_state($_MCE->{$_pid});
 
    if (!defined $_prev_c->{$_pid} || $_prev_c->{$_pid} != $_code) {
       $_MCE->{$_pid}->shutdown() if (defined $_MCE->{$_pid});
@@ -365,7 +365,7 @@ MCE::Loop - Parallel loop model for building creative loops
 
 =head1 VERSION
 
-This document describes MCE::Loop version 1.819
+This document describes MCE::Loop version 1.820
 
 =head1 DESCRIPTION
 
