@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.829';
+our $VERSION = '1.830';
 
 our @CARP_NOT = qw( MCE );
 
@@ -147,8 +147,15 @@ sub out_iter_array {
 
    my $_aref = shift; my %_tmp; my $_order_id = 1;
 
-   MCE::_croak('The argument to (out_iter_array) is not an array ref.')
-      unless (ref($_aref) eq 'ARRAY');
+   if (ref $_aref eq 'MCE::Shared::Object') {
+      my $_pkg = $_aref->blessed;
+      MCE::_croak('The argument to (out_iter_array) is not valid.')
+         unless $_pkg->can('TIEARRAY');
+   }
+   else {
+      MCE::_croak('The argument to (out_iter_array) is not an array ref.')
+         unless (ref $_aref eq 'ARRAY');
+   }
 
    return sub {
       my $_chunk_id = shift;
@@ -212,7 +219,7 @@ MCE::Candy - Sugar methods and output iterators
 
 =head1 VERSION
 
-This document describes MCE::Candy version 1.829
+This document describes MCE::Candy version 1.830
 
 =head1 DESCRIPTION
 
