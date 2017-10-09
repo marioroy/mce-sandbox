@@ -48,8 +48,17 @@ Primeutil.pl is similar but from a Perl module instead.
 ### Dependencies
 
 The primesieve.pl script requires the C API from primesieve.org. Change the
-base path from /usr/local in primesieve.pl (lines 179,180) if installed
-elsewhere.
+base path from /usr/local in primesieve.pl (lines 185,186) if installed
+elsewhere. Note: Build primesieve for both architectures on the Mac.
+
+    tar xf $HOME/Downloads/primesieve-6.1.tar.gz
+    cd primesieve-6.1
+
+    CMAKE=/Applications/CMake.app/Contents/bin/cmake
+    $CMAKE "-DCMAKE_OSX_ARCHITECTURES=x86_64;i386" .
+
+    make -j
+    sudo make install
 
 The primeutil.pl script requires Math::Prime::Util to run. For offline
 installation, acquire the necessary modules and install in the order shown.
