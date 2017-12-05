@@ -1,6 +1,6 @@
 use strict; use warnings;
 package Inline::C;
-our $VERSION = '0.64';
+our $VERSION = '0.78';
 
 use Inline 0.56;
 use Config;
@@ -8,7 +8,9 @@ use Data::Dumper;
 use Carp;
 use Cwd qw(cwd abs_path);
 use File::Spec;
-use Fcntl ':flock';
+use constant IS_WIN32 => $^O eq 'MSWin32';
+use if !IS_WIN32, Fcntl => ':flock';
+use if IS_WIN32, 'Win32::Mutex';
 
 our @ISA = qw(Inline);
 
@@ -164,6 +166,23 @@ END
                 if (ref($val) eq 'CODE') {
                     $o->add_list($o->{ILSM}, $key, $val, []);
                 }
+                elsif (ref($val) eq 'ARRAY') {
+                    my ($filter_plugin, @args) = @$val;
+
+                    croak "Bad format for filter plugin name: '$filter_plugin'"
+                        unless $filter_plugin =~ m/^[\w:]+$/;
+
+                    eval "require Inline::Filters::${filter_plugin}";
+                    croak "Filter plugin Inline::Filters::$filter_plugin not installed"
+                        if $@;
+
+                    croak "No Inline::Filters::${filter_plugin}::filter sub found"
+                        unless defined &{"Inline::Filters::${filter_plugin}::filter"};
+
+                    my $filter_factory = \&{"Inline::Filters::${filter_plugin}::filter"};
+
+                    $o->add_list($o->{ILSM}, $key, $filter_factory->(@args), []);
+                }
                 else {
                     eval { require Inline::Filters };
                     croak "'FILTERS' option requires Inline::Filters to be installed."
@@ -220,6 +239,11 @@ END
             $o->{CONFIG}{PROTOTYPE} = $value;
             next;
         }
+        if ($key eq 'CPPFLAGS') {
+            # C preprocessor flags, used by Inline::Filters::Preprocess()
+            next;
+        }
+
         my $class = ref $o; # handles subclasses correctly.
         croak "'$key' is not a valid config option for $class\n";
     }
@@ -317,9 +341,20 @@ sub build {
         croak "You need Time::HiRes for BUILD_TIMERS option:\n$@" if $@;
         $total_build_time = Time::HiRes::time();
     }
-    my $file = File::Spec->catfile($o->{API}{directory},'.lock');
-    open my $lockfh, '>', $file or die "lockfile $file: $!";
-    flock($lockfh, LOCK_EX) or die "flock: $!\n" if $^O !~ /^VMS|riscos|VOS$/;
+    my ($file, $lockfh);
+    if (IS_WIN32) {
+        #this can not look like a file path, or new() fails
+        $file = 'Inline__C_' . $o->{API}{directory} . '.lock';
+        $file =~ s/\\/_/g; #per CreateMutex on MSDN
+        $lockfh = Win32::Mutex->new(0, $file) or die "lockmutex $file: $^E";
+        $lockfh->wait(); #acquire, can't use 1 to new(), since if new() opens
+        #existing instead of create new Muxtex, it is not acquired
+    }
+    else {
+        $file = File::Spec->catfile($o->{API}{directory}, '.lock');
+        open $lockfh, '>', $file or die "lockfile $file: $!";
+        flock($lockfh, LOCK_EX) or die "flock: $!\n" if $^O !~ /^VMS|riscos|VOS$/;
+    }
     $o->mkpath($o->{API}{build_dir});
     $o->call('preprocess', 'Build Preprocess');
     $o->call('parse', 'Build Parse');
@@ -327,7 +362,12 @@ sub build {
     $o->call('write_Inline_headers', 'Build Glue 2');
     $o->call('write_Makefile_PL', 'Build Glue 3');
     $o->call('compile', 'Build Compile');
-    flock($lockfh, LOCK_UN) if $^O !~ /^VMS|riscos|VOS$/;
+    if (IS_WIN32) {
+        $lockfh->release or die "releasemutex $file: $^E";
+    }
+    else {
+        flock($lockfh, LOCK_UN) if $^O !~ /^VMS|riscos|VOS$/;
+    }
     if ($o->{CONFIG}{BUILD_TIMERS}) {
         $total_build_time = Time::HiRes::time() - $total_build_time;
         printf STDERR "Total Build Time: %5.4f secs\n", $total_build_time;
@@ -777,7 +817,6 @@ sub write_Makefile_PL {
     my $i = 0;
     for (@{$o->{ILSM}{MAKEFILE}{TYPEMAPS}}) {
         $o->{ILSM}{xsubppargs} .= "-typemap \"$_\" ";
-        $o->{ILSM}{MAKEFILE}{TYPEMAPS}->[$i++] = fix_space($_);
     }
 
     my %options = (
@@ -869,12 +908,9 @@ sub cleanup {
             $modpname
         );
         my $autodir = File::Spec->catdir($install_lib,'auto',$modpname);
-        unlink (
-            File::Spec->catfile($autodir,'.packlist'),
-            File::Spec->catfile($autodir,'$modfname.bs'),
-            File::Spec->catfile($autodir,'$modfname.exp'), #MSWin32
-            File::Spec->catfile($autodir,'$modfname.lib'), #MSWin32
-        );
+        my @files = ( ".packlist", map "$modfname.$_", qw( bs exp lib ) );
+        my @paths = grep { -e } map { File::Spec->catfile($autodir,$_) } @files;
+        unlink($_) || die "Can't delete file $_: $!" for @paths;
     }
 }
 
@@ -956,7 +992,6 @@ sub fix_make {
             $fix = $fixes{$1}
         ) {
             my $fixed = $o->{ILSM}{$fix};
-            $fixed = fix_space($fixed) if $fix eq 'install_lib';
             print MAKEFILE "$1 = $fixed\n";
         }
         else {
@@ -1035,11 +1070,6 @@ sub quote_space {
     my $out = join '', @in;
     $out =~ s/"\-I\s+\//"\-I\//g;
     $_[0] = $out;
-}
-
-sub fix_space {
-    $_[0] =~ s/ /\\ /g if $_[0] =~ / /;
-    $_[0];
 }
 
 #==============================================================================
