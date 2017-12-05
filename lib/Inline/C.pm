@@ -866,7 +866,8 @@ sub compile {
         $o->call('make_install', '"make install"', 2);
     };
     chdir $cwd;
-    die if $@; #Die now that we've done the chdir back to $cwd. (#81375)
+  # die if $@; #Die now that we've done the chdir back to $cwd. (#81375)
+    die if $@ && $@ !~ /chmod: cannot access/;  # <-- cygwin fix
     $o->call('cleanup', 'Cleaning Up', 2);
 }
 
