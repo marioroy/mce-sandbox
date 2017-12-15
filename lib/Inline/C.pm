@@ -8,7 +8,8 @@ use Data::Dumper;
 use Carp;
 use Cwd qw(cwd abs_path);
 use File::Spec;
-use constant IS_WIN32 => $^O eq 'MSWin32';
+#use constant IS_WIN32 => $^O eq 'MSWin32';
+use constant IS_WIN32 => 0; # flock works fine, doesn't require Win32::Mutex
 use if !IS_WIN32, Fcntl => ':flock';
 use if IS_WIN32, 'Win32::Mutex';
 
