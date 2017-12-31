@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-const int N_MAXDIGITS = (sizeof(uint64_t) * 8 * sizeof(char) / 3) + 1;
+const int N_MAXDIGITS = (sizeof(uint64_t) * 8 * sizeof(char) / 3) + 2;
 
 // This works similarly like sprintf, particularly returning the number of
 // characters.
