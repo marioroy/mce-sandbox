@@ -207,9 +207,7 @@ my ($F_adj, $factor, $sieve_size, $step_size);
 $F_adj = $F - ($F % 6) - 6 + 1;
 $F_adj = 1 if $F_adj < 1;
 
-$factor =
-   ($N >= 1e17) ?  2 : ($N >= 1e16) ?  3 : ($N >= 1e15) ?  8 :
-   ($N >= 1e14) ? 21 : ($N >= 1e13) ? 34 : ($N >= 1e12) ? 55 : 144;
+$factor = ($N >= 1e11) ? 89 : 144;
 
 $sieve_size  = int(16e7 / $factor * 4);
 $sieve_size -= $sieve_size % 510510;

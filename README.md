@@ -47,9 +47,16 @@ Primeutil.pl is similar but from a Perl module instead.
 
 ### Dependencies
 
-The primesieve.pl script requires the C API from primesieve.org. Change the
-base path from /usr/local in primesieve.pl (lines 185,186) if installed
-elsewhere. Note: Build primesieve for both architectures on the Mac.
+Dependencies are available on Ubuntu Linux.
+
+    sudo apt install libmath-prime-util-gmp-perl libmath-prime-util-perl
+    sudo apt install libprimesieve-dev
+
+On other platforms, the primesieve.pl script requires the C API from
+primesieve.org. Change the base path from /usr/local in primesieve.pl
+(~ lines 185,186) if installed elsewhere.
+
+Note: Build primesieve on the Mac for both architectures.
 
     tar xf $HOME/Downloads/primesieve-6.1.tar.gz
     cd primesieve-6.1
@@ -74,7 +81,7 @@ install depending on your environment.
 ### Note for 32-bit Perl
 
 The scripts support 64-bit numbers. Uncomment the "use bigint" line in the
-following files. This is not necessary for NUMBER below 2^32.
+following files. This is not necessary for a NUMBER below 2^32.
 
     bin/algorithm3.pl
     bin/primesieve.pl
