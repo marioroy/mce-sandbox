@@ -202,18 +202,13 @@ use Inline 'C' => "${base_dir}/src/algorithm3.c";
 ## for the pre-sieve logic: (2)(3) pre-sieves (5)(7)(11)(13)(17).
 ## Do not increase beyond the maximum below.
 
-my ($F_adj, $factor, $sieve_size, $step_size);
+my ($F_adj, $sieve_size, $step_size);
 
 $F_adj = $F - ($F % 6) - 6 + 1;
 $F_adj = 1 if $F_adj < 1;
 
-$factor = ($N >= 1e11) ? 89 : 144;
-
-$sieve_size  = int(16e7 / $factor * 4);
-$sieve_size -= $sieve_size % 510510;
-$sieve_size  = 510510 if $sieve_size < 510510;
-
-$step_size = $sieve_size * int(($N + 1 - $F_adj) / $sieve_size / 5e4 + 1);
+$sieve_size = 510510 * 8;
+$step_size  = $sieve_size * int(($N + 1 - $F_adj) / $sieve_size / 5e4 + 1);
 
 my $mce = MCE->new(
 
@@ -222,7 +217,7 @@ my $mce = MCE->new(
 
    max_workers => (($F == $N) ? 1 : $max_workers),
    use_threads => $use_threads,
-   init_relay => 1,
+   init_relay  => 1,
 
    user_func => sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;

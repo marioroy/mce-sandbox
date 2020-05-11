@@ -199,17 +199,13 @@ use Inline 'C' => "${base_dir}/src/primesieve.c";
 ##
 ###############################################################################
 
-my ($factor, $sieve_size, $step_size);
+my ($F_adj, $sieve_size, $step_size);
 
-$factor =
-   ($N >= 1e17) ? .5 : ($N >= 1e16) ? 1 : ($N >= 1e15) ? 2 :
-   ($N >= 1e14) ?  3 : ($N >= 1e13) ? 5 : ($N >= 1e12) ? 8 :
-   ($N >= 1e11) ? 13 : 21;
+$F_adj = $F - ($F % 6) - 6 + 1;
+$F_adj = 1 if $F_adj < 1;
 
-$sieve_size  = int(16e7 / $factor * 4);
-$sieve_size -= $sieve_size % 2;
-
-$step_size = $sieve_size * int(($N - $F) / $sieve_size / 5e4 + 1);
+$sieve_size = 510510 * 30;
+$step_size  = $sieve_size * int(($N + 1 - $F_adj) / $sieve_size / 5e4 + 1);
 
 my $mce = MCE->new(
 
@@ -218,7 +214,7 @@ my $mce = MCE->new(
 
    max_workers => (($F == $N) ? 1 : $max_workers),
    use_threads => $use_threads,
-   init_relay => 1,
+   init_relay  => 1,
 
    user_func => sub {
       my ($mce, $chunk_ref, $chunk_id) = @_;

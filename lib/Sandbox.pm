@@ -4,7 +4,7 @@ package Sandbox;
 use strict;
 use warnings;
 
-our $VERSION = '1.000';
+our $VERSION = '1.001';
 
 ## use bigint;
 
@@ -89,14 +89,18 @@ sub o_iter
 
    my ($completed, $inc, $progress) = (1, 99.0, 0.0);
    my $show_progress = $quiet_flag ? 0 : 1;
-   my $file;
+   my ($file, $last_progress);
 
    $inc = 99.0 / (($N - $F) / $step_size) if ($N - $F >= $step_size);
 
    return sub {
 
       if ($show_progress) {
-         syswrite(\*STDERR, "  " . int($progress += $inc) . "%\r");
+         $progress += $inc;
+         if (!defined $last_progress || $last_progress != int($progress)) {
+            $last_progress = int($progress);
+            syswrite(\*STDERR, "  $last_progress%\r");
+         }
       }
 
       if ($run_mode != MODE_PRINT) {
