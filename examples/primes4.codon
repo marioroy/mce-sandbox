@@ -1,0 +1,260 @@
+
+# libprimesieve (parallel segmented variant):
+#   Codon demonstration by Mario Roy, 2023-08-18
+#
+# This requires the libprimesieve C API.
+#   https://github.com/kimwalisch/primesieve
+#
+# Build (may need to specify -l /path/to/libprimesieve.so):
+#   codon build -release -o primes4 primes4.codon
+#   codon build -release --mcpu=x86-64-v3 -o primes4 primes4.codon
+#   codon build -release --mcpu=help -o primes4 primes4.codon
+#
+#   Codon Documentation https://docs.exaloop.io/codon/
+#   Codon GitHub Repo   https://github.com/exaloop/codon
+#
+# Usage:
+#   OMP_NUM_THREADS=8 ./primes4 [ N [ N ] [ -p ] ]  default 1 1000
+#   OMP_NUM_THREADS=8 ./primes4 100 -p        print primes found
+#   OMP_NUM_THREADS=8 ./primes4 87233720365000000 87233720368547757
+#   OMP_NUM_THREADS=8 ./primes4 18446744073000000000 18446744073709551609
+#   OMP_NUM_THREADS=8 ./primes4 1e+16 1.00001e+16
+
+from internal.dlopen import dlext
+
+class StructPrimesieveIterator:
+    i: u64
+    size: u64
+    start: u64
+    stop_hint: u64
+    primes: Ptr[u64]
+    memory: Ptr[cobj]
+    is_error: i32
+    reserved: i32
+
+LIBRARY = "libprimesieve." + dlext()
+from C import LIBRARY.primesieve_count_primes(u64, u64) -> u64
+from C import LIBRARY.primesieve_init(StructPrimesieveIterator) -> None
+from C import LIBRARY.primesieve_jump_to(StructPrimesieveIterator, u64, u64) -> None
+from C import LIBRARY.primesieve_generate_next_primes(StructPrimesieveIterator) -> None
+from C import LIBRARY.primesieve_set_num_threads(int) -> None
+
+class PrimesieveIterator:
+    _it: StructPrimesieveIterator
+
+    def __init__(self, start: u64, stop: u64):
+        self._it = StructPrimesieveIterator()
+        primesieve_init(self._it)
+        primesieve_jump_to(self._it, start, stop)
+
+    def next_prime(self) -> u64:
+        self._it.i += u64(1)
+        if self._it.i >= self._it.size:
+            primesieve_generate_next_primes(self._it)
+        return self._it.primes[int(self._it.i)]
+
+
+import math
+import openmp as omp
+from sys import argv, exit, stderr, stdout
+from time import time
+
+def strToBigInt(what: str) -> Int[1024]:
+    # Convert a string to big Int, supporting scientific notation.
+    try:
+        n = Int[1024](what)
+    except:
+        try:
+            s = f"{float(what):.1f}"
+        except:
+            print("Invalid integer or range.", file=stderr)
+            exit(1)
+        p = s.rfind('.')
+        n = Int[1024](s[:p])
+    return n
+
+def strToUInt(what: str) -> u64:
+    # Convert a string to UInt, supporting scientific notation.
+    try:
+        n = u64(what)
+    except:
+        s = f"{float(what):.1f}"
+        p = s.rfind('.')
+        n = u64(s[:p])
+    return n
+
+
+FLUSH_LIMIT: Static[int] = 65536 - 24
+
+class my:
+    # In C, one can declare a static variable inside a function that
+    # retains its value when incremented. E.g. static int written = 0;
+    # Tiny class to contain few static variables. E.g. my.written += N.
+    last_completed = -1
+    buf = Array[byte](65536)
+    written = 0
+
+def show_progress(start, high, stop):
+    completed = int(float(high - start) / float(stop - start) * 100)
+    if my.last_completed != completed:
+        if (completed > 99): completed = 99
+        my.last_completed = completed
+        print(f"  {completed}%\r", file=stderr, flush=True, end='')
+
+@inline
+def printint(value, flush_only):
+    from C import fwrite(Ptr[byte], int, int, cobj) -> int
+
+    # Print integer to static buffer; empty buffer automatically when full.
+    # Before exiting, call printint(0,1) to empty the buffer only and return.
+    #
+    # OMP_NUM_THREADS=4 ./primes 1e10 -p >/dev/null  #  4.6GB
+    #   14.578s before, unbuffered
+    #   10.680s buffered
+    #
+    if my.written and (my.written > FLUSH_LIMIT or flush_only):
+        fwrite(my.buf.ptr, my.written, 1, _C.seq_stdout())
+        my.written = 0
+
+    if flush_only:
+        _C.fflush(_C.seq_stdout())
+        return
+    # end of buffer logic
+
+    s, e = my.written, my.written
+
+    # base10 to string conversion
+    while True:
+        temp = value // u64(10)
+        my.buf[s] = byte(int(u64(ord('0')) + value - u64(10) * temp))
+        s += 1
+        value = temp
+        if not value:
+            break
+
+    # increment the number of characters including linefeed
+    my.written += s - e + 1; my.buf[s] = byte('\n')
+
+    # reverse the string in place
+    s -= 1
+    while s > e:
+        c = my.buf[s]
+        my.buf[s] = my.buf[e]
+        my.buf[e] = c
+        e += 1
+        s -= 1
+
+
+LIMIT_MAX:  Static[str] = "18446744073709551609" # 2^64-1-6
+SIEVE_SIZE: Static[int] = 9609600
+
+@omp.ordered
+def display_primes(it: PrimesieveIterator, high: u64) -> None:
+    prime = it.next_prime()
+    while (prime <= high):
+        printint(prime, 0)
+        prime = it.next_prime()
+
+def primesieve(start: u64, stop: u64, print_flag: int) -> None:
+
+    # disable threading in the library as we're running threads here
+    primesieve_set_num_threads(1)
+
+    step_sz = SIEVE_SIZE * 19
+    if   stop >= strToUInt("1e+19"): step_sz *= 8
+    elif stop >= strToUInt("1e+18"): step_sz *= 7
+    elif stop >= strToUInt("1e+17"): step_sz *= 6
+    elif stop >= strToUInt("1e+16"): step_sz *= 5
+    elif stop >= strToUInt("1e+15"): step_sz *= 4
+    elif stop >= strToUInt("1e+14"): step_sz *= 3
+    elif stop >= strToUInt("1e+13"): step_sz *= 2
+    elif stop >= strToUInt("1e+12"): step_sz *= 1
+
+    num_chunks = int((stop - start) // u64(step_sz));
+    if (stop - start) % u64(step_sz): num_chunks += 1
+
+    count = 0
+
+    @par(schedule='static', chunk_size=1, ordered=True)
+    for chunk_id in range(num_chunks):
+        low = start + u64(step_sz * chunk_id)
+        high = low + u64(step_sz) - u64(1)
+
+        # Check also high < low in case addition overflowed.
+        if high > stop or high < low: high = stop
+
+        if omp.get_thread_num() == 0 and stop > u64(2000000000) and not print_flag:
+            show_progress(start, high, stop)
+
+        if print_flag:
+##
+# Error: "primesieve_iterator: cannot generate primes > 2^64"
+# https://github.com/kimwalisch/primesieve/issues/138
+# Reduce start/stop values, but not forget the last unsigned 64-bit prime.
+#
+# Why it happens? "Calling primesieve_next_prime() after 18446744073709551557
+# would generate a prime greater than 2^64 which primesieve doesn't support,
+# hence this causes an error."
+##
+            if low <= u64(18446744073709551557) and high >= u64(18446744073709551557):
+                include_last_prime = u64(18446744073709551557)
+            else:
+                include_last_prime = u64(0)
+
+            if low  > u64(18446744073709551556): low  = u64(18446744073709551556)
+            if high > u64(18446744073709551556): high = u64(18446744073709551556)
+
+            it = PrimesieveIterator(low, high)
+
+            display_primes(it, high)
+            if include_last_prime:
+                printint(include_last_prime, 0)
+        else:
+            count += int(primesieve_count_primes(low, high))
+
+    if print_flag:
+        printint(u64(0),1)  # flush buffer only
+    else:
+        print(f"\rPrimes found: {count}", file=stderr)
+
+
+def main():
+    start, stop = u64(1), u64(1000)
+    loff, print_flag = -1, 0
+
+    # check for print option
+    if len(argv) > 0 and argv[-1] == "-p":
+        print_flag = 1
+        argv.pop()
+
+    # check if range is given -- two integers
+    if len(argv) > 2:
+        loff = 2
+        if len(argv[1]) > 20 or strToBigInt(argv[1]) > strToBigInt(LIMIT_MAX):
+            print(f"Start exceeds {LIMIT_MAX} 2^64-1-6.", file=stderr)
+            exit(1)
+        start = strToUInt(argv[1])
+    elif len(argv) > 1:
+        loff = 1
+
+    # check for start of range or limit
+    if loff > 0:
+        if len(argv[loff]) > 20 or strToBigInt(argv[loff]) > strToBigInt(LIMIT_MAX):
+            print(f"Limit exceeds {LIMIT_MAX} 2^64-1-6.", file=stderr)
+            exit(1)
+        stop = strToUInt(argv[loff])
+
+    # count primes between start and stop, inclusively
+    if start < u64(1) or stop < start:
+        print("Invalid integer or range.", file=stderr)
+        exit(1)
+    else:
+        tstart = time()
+        primesieve(start, stop, print_flag)
+        tend = time()
+        print(f"Seconds: {tend - tstart:0.3f}", file=stderr)
+
+
+if __name__ == "__main__":
+    main()
+

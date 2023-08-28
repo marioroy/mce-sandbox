@@ -1,0 +1,33 @@
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must ends with two \r.
+Icon
+
+# Thumbnails
+._*
+
+# Files that might appear on external disk
+.Spotlight-V100
+.Trashes
+
+.Inline
+_Inline
+*.bak
+*.old
+*.swp
+*.tmp
+
+primes
+primes.exe
+primes1
+primes1.exe
+primes2
+primes2.exe
+primes3
+primes3.exe
+primes4
+primes4.exe
+

@@ -1,0 +1,443 @@
+
+# Algorithm3 (parallel segmented variant):
+#   Codon demonstration by Mario Roy, 2023-08-18
+#
+# Xuedong Luo:
+#   A practical sieve algorithm for finding prime numbers.
+#   ACM Volume 32 Issue 3, March 1989, Pages 344-346 
+#   https://dl.acm.org/doi/pdf/10.1145/62065.62072
+#   http://dl.acm.org/citation.cfm?doid=62065.62072
+#
+#   "Based on the sieve of Eratosthenes, a faster and more compact
+#    algorithm is presented for finding all primes between 2 and N.
+#    Avoid all composites that have 2 or 3 as one of their prime
+#    factors (where i is odd)."
+#
+#   { 0, 5, 7, 11, 13, ... 3i + 2, 3(i + 1) + 1, ..., N }
+#     0, 1, 2,  3,  4, ... list indices (0 is not used)
+#
+# Build:
+#   codon build -release -o primes2 primes2.codon
+#   codon build -release --mcpu=x86-64-v3 -o primes2 primes2.codon
+#   codon build -release --mcpu=help -o primes2 primes2.codon
+#
+#   Codon Documentation https://docs.exaloop.io/codon/
+#   Codon GitHub Repo   https://github.com/exaloop/codon
+#
+# Usage:
+#   OMP_NUM_THREADS=8 ./primes2 [ N [ N ] [ -p ] ]  default 1 1000
+#   OMP_NUM_THREADS=8 ./primes2 100 -p        print primes found
+#   OMP_NUM_THREADS=8 ./primes2 87233720365000000 87233720368547757
+#   OMP_NUM_THREADS=8 ./primes2 18446744073000000000 18446744073709551609
+#   OMP_NUM_THREADS=8 ./primes2 1e+16 1.00001e+16
+
+import math
+import openmp as omp
+from sys import argv, exit, stderr, stdout
+from time import time
+
+def strToBigInt(what: str) -> Int[1024]:
+    # Convert a string to big Int, supporting scientific notation.
+    try:
+        n = Int[1024](what)
+    except:
+        try:
+            s = f"{float(what):.1f}"
+        except:
+            print("Invalid integer or range.", file=stderr)
+            exit(1)
+        p = s.rfind('.')
+        n = Int[1024](s[:p])
+    return n
+
+def strToUInt(what: str) -> u64:
+    # Convert a string to UInt, supporting scientific notation.
+    try:
+        n = u64(what)
+    except:
+        s = f"{float(what):.1f}"
+        p = s.rfind('.')
+        n = u64(s[:p])
+    return n
+
+
+_POPCNT_BYTE = [
+    0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8 ]
+
+def popcount(s, size):
+    count, i = 0, 0
+
+    if size == 0:
+        return count
+
+    if size > 8:
+        a = Ptr[u64](s.as_byte())
+        asize = (size + 7) // 8 - 1
+
+        m1  = u64(0x5555555555555555)
+        m2  = u64(0x3333333333333333)
+        m4  = u64(0x0f0f0f0f0f0f0f0f)
+        h01 = u64(0x0101010101010101)
+
+        for j in range(asize):
+            b = a[j]
+            b =  b       - ((b >> u64(1))  & m1)
+            b = (b & m2) + ((b >> u64(2))  & m2)
+            b = (b       +  (b >> u64(4))) & m4
+            count += int((b * h01) >> u64(56))
+
+        i = asize * 8
+
+    for j in range(i, size):
+        count += _POPCNT_BYTE[int(s[j])]
+
+    return count
+
+
+_UNSET_BIT = Ptr[u8](8)
+_UNSET_BIT[0] = u8(~(1 << 0) & 0xff)
+_UNSET_BIT[1] = u8(~(1 << 1) & 0xff)
+_UNSET_BIT[2] = u8(~(1 << 2) & 0xff)
+_UNSET_BIT[3] = u8(~(1 << 3) & 0xff)
+_UNSET_BIT[4] = u8(~(1 << 4) & 0xff)
+_UNSET_BIT[5] = u8(~(1 << 5) & 0xff)
+_UNSET_BIT[6] = u8(~(1 << 6) & 0xff)
+_UNSET_BIT[7] = u8(~(1 << 7) & 0xff)
+
+@inline
+def CLRBIT(s, i):
+  # s[i >> 3] &= u8(~(1 << (i & 7)))
+    s[i >> 3] &= _UNSET_BIT[i & 7]
+
+@inline
+def GETBIT(s, i) -> u8:
+    return s[i >> 3] & u8(1 << (i & 7))
+
+@inline
+def SETBIT(s, i):
+    s[i >> 3] |= u8(1 << (i & 7))
+
+
+FLUSH_LIMIT: Static[int] = 65536 - 24
+
+class my:
+    # In C, one can declare a static variable inside a function that
+    # retains its value when incremented. E.g. static int written = 0;
+    # Tiny class to contain few static variables. E.g. my.written += N.
+    last_completed = -1
+    buf = Array[byte](65536)
+    written = 0
+
+def show_progress(start, high, stop):
+    completed = int(float(high - start) / float(stop - start) * 100)
+    if my.last_completed != completed:
+        if (completed > 99): completed = 99
+        my.last_completed = completed
+        print(f"  {completed}%\r", file=stderr, flush=True, end='')
+
+@inline
+def printint(value, flush_only):
+    from C import fwrite(Ptr[byte], int, int, cobj) -> int
+
+    # Print integer to static buffer; empty buffer automatically when full.
+    # Before exiting, call printint(0,1) to empty the buffer only and return.
+    #
+    # OMP_NUM_THREADS=4 ./primes 1e10 -p >/dev/null  #  4.6GB
+    #   14.578s before, unbuffered
+    #   10.680s buffered
+    #
+    if my.written and (my.written > FLUSH_LIMIT or flush_only):
+        fwrite(my.buf.ptr, my.written, 1, _C.seq_stdout())
+        my.written = 0
+
+    if flush_only:
+        _C.fflush(_C.seq_stdout())
+        return
+    # end of buffer logic
+
+    s, e = my.written, my.written
+
+    # base10 to string conversion
+    while True:
+        temp = value // u64(10)
+        my.buf[s] = byte(int(u64(ord('0')) + value - u64(10) * temp))
+        s += 1
+        value = temp
+        if not value:
+            break
+
+    # increment the number of characters including linefeed
+    my.written += s - e + 1; my.buf[s] = byte('\n')
+
+    # reverse the string in place
+    s -= 1
+    while s > e:
+        c = my.buf[s]
+        my.buf[s] = my.buf[e]
+        my.buf[e] = c
+        e += 1
+        s -= 1
+
+
+@omp.ordered
+def output_primes(s, start, low, high, M, n_off):
+
+    if start <= u64(2) and low <= u64(2) and high >= u64(2):
+        printint(u64(2), 0)
+    if start <= u64(3) and low <= u64(3) and high >= u64(3):
+        printint(u64(3), 0)
+
+    for i in range(1, M + 1, 2):
+        if (GETBIT(s, i)):
+            printint(n_off + u64(3 * i + 2), 0)
+        if (GETBIT(s, i + 1)):
+            printint(n_off + u64(3 * (i + 1) + 1), 0)
+
+
+# Step size is a multiple of 510510 or 9699690 for the pre-sieve logic.
+# Primes (2)(3), the app pre-sieves (5)(7)(11)(13)(17) and >= 1e13 (19).
+# 2*3*5*7*11*13*17 = 510510 * 19 = 9699690.
+
+LIMIT_MAX: Static[str] = "18446744073709551609" # 2^64-1-6
+
+def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
+
+    # Adjust start to a multiple of 6, substract 6, and add 1.
+    #
+    # Corner case: We substract 6 regardless. For example:
+    # Segment (start = 102, stop = 140) prime start_adj = 103 is skipped
+    # unless substracting 6; start_adj = 97, n_off = start_adj - 1.
+    #
+    # Index 0 is cleared, not used. Index 1 is cleared, outside segment.
+    # { 0, 101, 103, 107, ..., n_off + 3i + 2, n_off + 3(i + 1) + 1, ..., N }
+    # { 0,   0, 103, 107, ..., n_off + 3i + 2, n_off + 3(i + 1) + 1, ..., N }
+
+    if start > u64(5):
+        start_adj = start - (start % u64(6)) - u64(6) + u64(1)
+    else:
+        start_adj = u64(1)
+
+    step_sz = 510510 * 12 if stop < u64(int(1e12)) else 9699690
+    if   stop >= strToUInt("1e+19"): step_sz *= 8
+    elif stop >= strToUInt("1e+18"): step_sz *= 7
+    elif stop >= strToUInt("1e+17"): step_sz *= 6
+    elif stop >= strToUInt("1e+16"): step_sz *= 5
+    elif stop >= strToUInt("1e+15"): step_sz *= 4
+    elif stop >= strToUInt("1e+14"): step_sz *= 3
+    elif stop >= strToUInt("1e+13"): step_sz *= 2
+    elif stop >= strToUInt("1e+12"): step_sz *= 1
+
+    #====================================================================
+    # Compute is_prime <= q. This enables threads to process faster.
+    #====================================================================
+
+    q = int(math.sqrt(float(stop))) // 3
+    mem_sz_q = (q + 2 + 7) // 8
+    is_prime = Ptr[u8](mem_sz_q)
+    str.memset(is_prime.as_byte(), byte(0xff), mem_sz_q)
+    CLRBIT(is_prime, 0)
+
+    c, k, t, j, ij = 0, 1, 2, 0, 0
+
+    # clear small composites <= q
+    for i in range(1, q + 1):
+        k  = 3 - k; c += 4 * k * i; j = c
+        ij = 2 * i * (3 - k) + 1; t += 4 * k
+        if GETBIT(is_prime, i):
+            while j <= q:
+                CLRBIT(is_prime, j)
+                j += ij; ij = t - ij
+
+    #====================================================================
+    # if stop < 1e12
+    #    Pre-sieve 5, 7, 11, 13, and 17 (i = 1 through 5).
+    # else
+    #    Pre-sieve 5, 7, 11, 13, 17, and 19 (i = 1 through 6).
+    #====================================================================
+
+    sieve_sz = step_sz // 3
+    mem_sz_p = (sieve_sz + 2 + 7) // 8
+    pre_sieve = Ptr[u8](mem_sz_p)
+    str.memset(pre_sieve.as_byte(), byte(0xff), mem_sz_p)
+    CLRBIT(pre_sieve, 0)
+
+    c_off, j_off = 0, int((start_adj - u64(1)) // u64(3))
+    c, k, t = 0, 1, 2
+
+    for i in range(1, (5 if stop < u64(int(1e12)) else 6) + 1):
+        k  = 3 - k; c += 4 * k * i; j = c
+        ij = 2 * i * (3 - k) + 1; t += 4 * k
+
+        # skip numbers before start_adj
+        if j < j_off:
+            j += (j_off - j) // t * t + ij
+            ij = t - ij
+            if j < j_off:
+                j += ij; ij = t - ij
+
+        # clear composites (j <= step_sz // 3)
+        c_off = j - j_off
+        while ((c_off >> 3) < mem_sz_p):
+            CLRBIT(pre_sieve, c_off)
+            j += ij; ij = t - ij
+            c_off = j - j_off
+
+    #====================================================================
+    # if stop < 1e12
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # 1. At this point, i = 6, c = 96, k = 2, and t = 34.
+    #    Threads will not need to process i = 1 through 5.
+    # 2. Clear bits for 5, 7, 11, 13, and 17 including bit 0.
+    #    The thread processing the first chunk will undo this.
+    # else
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # 1. At this point, i = 7, c = 120, k = 1, and t = 38.
+    #    Threads will not need to process i = 1 through 6.
+    # 2. Clear bits for 5, 7, 11, 13, 17, and 19 including bit 0.
+    #    The thread processing the first chunk will undo this.
+    #====================================================================
+
+    if start_adj == u64(1):
+        pre_sieve[0] = u8(0xc0) if stop < u64(int(1e12)) else u8(0x80)
+
+    count = 0
+    if start <= u64(2) and stop >= u64(2): count += 1
+    if start <= u64(3) and stop >= u64(3): count += 1
+
+    num_chunks = int((stop - start_adj) // u64(step_sz));
+    if (stop - start_adj) % u64(step_sz): num_chunks += 1
+
+    @par(schedule='static', chunk_size=1, ordered=True)
+    for chunk_id in range(num_chunks):
+
+        low = start_adj + u64(step_sz * chunk_id)
+        high = low + u64(step_sz) - u64(1)
+
+        # Check also high < low in case addition overflowed.
+        if high > stop or high < low: high = stop
+
+        if omp.get_thread_num() == 0 and stop > u64(2000000000) and not print_flag:
+            show_progress(start_adj, high, stop)
+
+        #================================================================
+        # Practical sieve algorithm.
+        #================================================================
+
+        q = int(math.sqrt(float(high))) // 3
+        M = int((high - low + (high & u64(1))) // u64(3))
+        M2 = int(high // u64(3))
+        n_off = u64(low - u64(1))
+        j_off = int(n_off // u64(3))
+
+        mem_sz = (M + 2 + 7) // 8
+        sieve = Ptr[u8](mem_sz)
+
+        # copy pre-sieved data into sieve
+        # fix byte 0 if starting at 1 (has primes 5,7,11,13,17,19,23)
+        str.memcpy(sieve.as_byte(), pre_sieve.as_byte(), mem_sz)
+        if low == u64(1): sieve[0] = u8(0xfe)
+
+        # clear composites less than "start" value
+        if low == start_adj and n_off + u64((3 * 1 + 1) | 1) < start:
+            CLRBIT(sieve, 1)
+            if n_off + u64((3 * 2 + 1) | 1) < start:
+                CLRBIT(sieve, 2)
+
+        # clear composites greater than "high" and "stop" values
+        i = mem_sz * 8 - (M + 2)
+        while i:
+            CLRBIT(sieve, (mem_sz - 1) * 8 + (8 - i))
+            i -= 1
+        if high == stop and n_off + u64((3 * (M + 1) + 1) | 1) > stop:
+            CLRBIT(sieve, M + 1)
+            if n_off + u64((3 * M + 1) | 1) > stop:
+                CLRBIT(sieve, M)
+
+        j = 0; ij = 0;
+
+        if stop < u64(int(1e12)):
+          # sieving begins with 19 (i = 6)
+            c = 96; k = 2; t = 34
+        else:
+          # sieving begins with 23 (i = 7)
+            c = 120; k = 1; t = 38
+
+        for i in range((6 if stop < u64(int(1e12)) else 7), q + 1):
+            k  = 3 - k; c += 4 * k * i; j = c
+            ij = 2 * i * (3 - k) + 1; t += 4 * k
+
+            if GETBIT(is_prime, i):
+                # skip numbers before this block
+                if j < j_off:
+                    j += (j_off - j) // t * t + ij
+                    ij = t - ij
+                    if (j < j_off):
+                        j += ij; ij = t - ij
+
+                # clear composites
+                while (j <= M2):
+                    CLRBIT(sieve, j - j_off)
+                    j += ij; ij = t - ij
+
+        #================================================================
+        # Output or count primes found.
+        #================================================================
+
+        if print_flag:
+            output_primes(sieve, start, low, high, M, n_off)
+        else:
+            count += popcount(sieve, mem_sz)
+
+    if print_flag:
+        printint(u64(0),1)  # flush buffer only
+    else:
+        print(f"\rPrimes found: {count}", file=stderr)
+
+
+def main():
+    start, stop = u64(1), u64(1000)
+    loff, print_flag = -1, 0
+
+    # check for print option
+    if len(argv) > 0 and argv[-1] == "-p":
+        print_flag = 1
+        argv.pop()
+
+    # check if range is given -- two integers
+    if len(argv) > 2:
+        loff = 2
+        if len(argv[1]) > 20 or strToBigInt(argv[1]) > strToBigInt(LIMIT_MAX):
+            print(f"Start exceeds {LIMIT_MAX} 2^64-1-6.", file=stderr)
+            exit(1)
+        start = strToUInt(argv[1])
+    elif len(argv) > 1:
+        loff = 1
+
+    # check for start of range or limit
+    if loff > 0:
+        if len(argv[loff]) > 20 or strToBigInt(argv[loff]) > strToBigInt(LIMIT_MAX):
+            print(f"Limit exceeds {LIMIT_MAX} 2^64-1-6.", file=stderr)
+            exit(1)
+        stop = strToUInt(argv[loff])
+
+    # count primes between start and stop, inclusively
+    if start < u64(1) or stop < start:
+        print("Invalid integer or range.", file=stderr)
+        exit(1)
+    else:
+        tstart = time()
+        practicalsieve(start, stop, print_flag)
+        tend = time()
+        print(f"Seconds: {tend - tstart:0.3f}", file=stderr)
+
+
+if __name__ == "__main__":
+    main()
+
