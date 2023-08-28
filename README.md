@@ -9,7 +9,7 @@ are required on the system.
 
 ### Content
 
-    .Inline/           Where Inline::C is configured to cache C object files.
+    .Inline/          Where Inline::C is configured to cache C object files.
 
     bin/
        algorithm3.pl  Practical sieve based on Algorithm3 from Xuedong Luo [1].
