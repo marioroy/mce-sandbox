@@ -172,7 +172,7 @@ SV* practicalsieve(SV *start_sv, SV *stop_sv, int run_mode, int fd)
    int64_t  n_ret, j_off, c, k, t, j, ij;
    int64_t  q, M, M2, i, mem_sz;
    byte_t   *sieve;
-   int      err, flag;
+   int      err;
 
    #ifdef __LP64__
       start = SvUV(start_sv);
