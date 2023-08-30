@@ -41,7 +41,7 @@
 
 typedef unsigned char byte_t;
 
-static const int _POPCNT_BYTE[256] = {
+static const byte_t _POPCNT_BYTE[256] = {
     0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
     1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
     1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
@@ -120,9 +120,9 @@ static const int _UNSET_BIT[8] = {
     (~(1 << 6) & 0xff), (~(1 << 7) & 0xff)
 };
 
-#define CLRBIT(s,i) s[(int64_t) (i) >> 3] &= _UNSET_BIT[(i) & 7]
-#define GETBIT(s,i) s[(int64_t) (i) >> 3] & (1 << ((i) & 7))
-#define SETBIT(s,i) s[(int64_t) (i) >> 3] |= (1 << ((i) & 7))
+#define CLRBIT(s,i) s[(int64_t)(i) >> 3] &= _UNSET_BIT[(i) & 7]
+#define GETBIT(s,i) s[(int64_t)(i) >> 3] &  (1 << ((i) & 7))
+#define SETBIT(s,i) s[(int64_t)(i) >> 3] |= (1 << ((i) & 7))
 
 static const int FLUSH_LIMIT = 65536 - 24;
 

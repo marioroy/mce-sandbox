@@ -12,7 +12,7 @@
 
 typedef unsigned char byte_t;
 
-static const int popcnt_byte[256] = {
+static const byte_t popcnt_byte[256] = {
    0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
@@ -24,19 +24,21 @@ static const int popcnt_byte[256] = {
 };
 
 static const int unset_bit[8] = {
-   ~(1 << 0), ~(1 << 1), ~(1 << 2), ~(1 << 3),
-   ~(1 << 4), ~(1 << 5), ~(1 << 6), ~(1 << 7)
+   (~(1 << 0) & 0xff), (~(1 << 1) & 0xff),
+   (~(1 << 2) & 0xff), (~(1 << 3) & 0xff),
+   (~(1 << 4) & 0xff), (~(1 << 5) & 0xff),
+   (~(1 << 6) & 0xff), (~(1 << 7) & 0xff)
 };
 
-#define CLRBIT(s,i) s[(int64_t) (i) >> 3] &= unset_bit[(i) & 7]
-#define GETBIT(s,i) s[(int64_t) (i) >> 3] &  (1 << ((i) & 7))
-#define SETBIT(s,i) s[(int64_t) (i) >> 3] |= (1 << ((i) & 7))
+#define CLRBIT(s,i) s[(int64_t)(i) >> 3] &= unset_bit[(i) & 7]
+#define GETBIT(s,i) s[(int64_t)(i) >> 3] &  (1 << ((i) & 7))
+#define SETBIT(s,i) s[(int64_t)(i) >> 3] |= (1 << ((i) & 7))
 
 // The popcount function is based on popcnt from Math::Prime::Util.
 
-static uint64_t popcount(const byte_t *bytearray, uint64_t size)
+static int64_t popcount(const byte_t *bytearray, int64_t size)
 {
-   uint64_t asize, i, count = 0;
+   int64_t asize, i, count = 0;
 
    if (bytearray == 0 || size == 0)
       return count;
