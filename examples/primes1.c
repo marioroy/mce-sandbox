@@ -284,7 +284,7 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
             if (j < j_off)
                 j += ij, ij = t - ij;
         }
-        // clear composites (j <= step_sz / 3)
+        // clear composites (j <= sieve_sz)
         c_off = j - j_off;
         while ((c_off >> 3) < mem_sz_p) {
             CLRBIT(pre_sieve, c_off);
@@ -310,6 +310,13 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
 
     if (start_adj == 1) {
         pre_sieve[0] = (stop < 1e12) ? 0xc0 : 0x80;
+    }
+
+    // clear composites greater than "sieve_sz"
+    int64_t i = mem_sz_p * 8 - (sieve_sz + 1);
+    while (i) {
+        CLRBIT(pre_sieve, mem_sz_p * 8 - i);
+        i--;
     }
 
     int64_t count = 0;
@@ -356,16 +363,18 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
                 CLRBIT(sieve, 2);
         }
 
-        // clear composites greater than "high" and "stop" values
-        int64_t i = mem_sz * 8 - (M + 2);
-        while (i) {
-            CLRBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
-            i--;
-        }
-        if (high == stop && n_off + ((3 * (M + 1) + 1) | 1) > stop) {
-            CLRBIT(sieve, M + 1);
-            if (n_off + ((3 * M + 1) | 1) > stop)
-                CLRBIT(sieve, M);
+        // clear composites greater than "stop" value
+        if (high == stop) {
+            int64_t i = mem_sz * 8 - (M + 2);
+            while (i) {
+                CLRBIT(sieve, mem_sz * 8 - i);
+                i--;
+            }
+            if (n_off + ((3 * (M + 1) + 1) | 1) > stop) {
+                CLRBIT(sieve, M + 1);
+                if (n_off + ((3 * M + 1) | 1) > stop)
+                    CLRBIT(sieve, M);
+            }
         }
 
         int64_t c, k, t, j, ij;

@@ -25,7 +25,7 @@ static byte_t   *is_prime, *pre_sieve;
 void practicalsieve_precalc(
       SV *from_adj_sv, SV *from_val_sv, SV *n_val_sv, SV *step_sz_sv )
 {
-   int64_t j_off, c, k, t, j, ij, step_sz;
+   int64_t j_off, c, k, t, j, ij, step_sz, sieve_sz;
    int64_t c_off, i, q, mem_sz;
 
    #ifdef __LP64__
@@ -89,9 +89,8 @@ void practicalsieve_precalc(
    //    Pre-sieve 5, 7, 11, 13, 17, and 19 (i = 1 through 6).
    //====================================================================
 
-   step_sz /= 3;
-
-   mem_sz = (step_sz + 2 + 7) / 8;
+   sieve_sz = step_sz / 3;
+   mem_sz = (sieve_sz + 2 + 7) / 8;
    pre_sieve = (byte_t *) malloc(mem_sz);
    if (pre_sieve == NULL) {
       free((void *) is_prime);
@@ -115,7 +114,7 @@ void practicalsieve_precalc(
          if (j < j_off)
             j += ij, ij = t - ij;
       }
-      // clear composites (j <= step_sz / 3)
+      // clear composites (j <= sieve_sz)
       c_off = j - j_off;
       while ((c_off >> 3) < mem_sz) {
          CLRBIT(pre_sieve, c_off);
@@ -141,6 +140,13 @@ void practicalsieve_precalc(
 
    if (FROM_adj == 1) {
       pre_sieve[0] = (N_val < 1e12) ? 0xc0 : 0x80;
+   }
+
+   // clear composites greater than "sieve_sz"
+   i = mem_sz * 8 - (sieve_sz + 1);
+   while (i) {
+      CLRBIT(pre_sieve, mem_sz * 8 - i);
+      i--;
    }
 }
 
@@ -208,16 +214,18 @@ SV* practicalsieve(SV *start_sv, SV *stop_sv, int run_mode, int fd)
          CLRBIT(sieve, 2);
    }
 
-   // clear composites greater than "stop" and "N_val"
-   i = mem_sz * 8 - (M + 2);
-   while (i) {
-      CLRBIT(sieve, (mem_sz - 1) * 8 + (8 - i));
-      i--;
-   }
-   if (stop == N_val && n_off + ((3 * (M + 1) + 1) | 1) > N_val) {
-      CLRBIT(sieve, M + 1);
-      if (n_off + ((3 * M + 1) | 1) > N_val)
-         CLRBIT(sieve, M);
+   // clear composites greater than "N_val"
+   if (stop == N_val) {
+      i = mem_sz * 8 - (M + 2);
+      while (i) {
+         CLRBIT(sieve, mem_sz * 8 - i);
+         i--;
+      }
+      if (n_off + ((3 * (M + 1) + 1) | 1) > N_val) {
+         CLRBIT(sieve, M + 1);
+         if (n_off + ((3 * M + 1) | 1) > N_val)
+            CLRBIT(sieve, M);
+      }
    }
 
    if (N_val < 1e12) {

@@ -282,7 +282,7 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
             if j < j_off:
                 j += ij; ij = t - ij
 
-        # clear composites (j <= step_sz // 3)
+        # clear composites (j <= sieve_sz)
         c_off = j - j_off
         while ((c_off >> 3) < mem_sz_p):
             CLRBIT(pre_sieve, c_off)
@@ -306,6 +306,12 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
 
     if start_adj == u64(1):
         pre_sieve[0] = u8(0xc0) if stop < u64(int(1e12)) else u8(0x80)
+
+    # clear composites greater than "sieve_sz"
+    i = mem_sz_p * 8 - (sieve_sz + 1)
+    while i:
+        CLRBIT(pre_sieve, mem_sz_p * 8 - i)
+        i -= 1
 
     count = 0
     if start <= u64(2) and stop >= u64(2): count += 1
@@ -350,15 +356,16 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
             if n_off + u64((3 * 2 + 1) | 1) < start:
                 CLRBIT(sieve, 2)
 
-        # clear composites greater than "high" and "stop" values
-        i = mem_sz * 8 - (M + 2)
-        while i:
-            CLRBIT(sieve, (mem_sz - 1) * 8 + (8 - i))
-            i -= 1
-        if high == stop and n_off + u64((3 * (M + 1) + 1) | 1) > stop:
-            CLRBIT(sieve, M + 1)
-            if n_off + u64((3 * M + 1) | 1) > stop:
-                CLRBIT(sieve, M)
+        # clear composites greater than "stop" value
+        if high == stop:
+            i = mem_sz * 8 - (M + 2)
+            while i:
+                CLRBIT(sieve, mem_sz * 8 - i)
+                i -= 1
+            if n_off + u64((3 * (M + 1) + 1) | 1) > stop:
+                CLRBIT(sieve, M + 1)
+                if n_off + u64((3 * M + 1) | 1) > stop:
+                    CLRBIT(sieve, M)
 
         j = 0; ij = 0;
 
