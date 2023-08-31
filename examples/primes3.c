@@ -106,9 +106,7 @@ void primesieve(uint64_t start, uint64_t stop, int print_flag)
     else if ( stop >= 1e+13 ) { step_sz *= 2; }
     else if ( stop >= 1e+12 ) { step_sz *= 1; }
 
-    int64_t num_chunks = (stop - start) / step_sz;
-    if ((stop - start) % step_sz) num_chunks++;
-
+    int64_t num_chunks = (stop - start + step_sz) / step_sz;
     int64_t count = 0;
 
     #pragma omp parallel for ordered schedule(static, 1) reduction(+:count)

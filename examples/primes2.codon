@@ -313,12 +313,11 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
         CLRBIT(pre_sieve, mem_sz_p * 8 - i)
         i -= 1
 
+    num_chunks = int((stop - start_adj + u64(step_sz)) // u64(step_sz));
     count = 0
+
     if start <= u64(2) and stop >= u64(2): count += 1
     if start <= u64(3) and stop >= u64(3): count += 1
-
-    num_chunks = int((stop - start_adj) // u64(step_sz));
-    if (stop - start_adj) % u64(step_sz): num_chunks += 1
 
     @par(schedule='static', chunk_size=1, ordered=True)
     for chunk_id in range(num_chunks):

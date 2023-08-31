@@ -170,9 +170,7 @@ def primesieve(start: u64, stop: u64, print_flag: int) -> None:
     elif stop >= strToUInt("1e+13"): step_sz *= 2
     elif stop >= strToUInt("1e+12"): step_sz *= 1
 
-    num_chunks = int((stop - start) // u64(step_sz));
-    if (stop - start) % u64(step_sz): num_chunks += 1
-
+    num_chunks = int((stop - start + u64(step_sz)) // u64(step_sz));
     count = 0
 
     @par(schedule='static', chunk_size=1, ordered=True)
