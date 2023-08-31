@@ -202,7 +202,7 @@ static void output_primes(
 }
 
 // Step size is a multiple of 510510 or 9699690 for the pre-sieve logic.
-// Primes (2)(3), the app pre-sieves (5)(7)(11)(13)(17) and >= 1e13 (19).
+// Primes (2)(3), the app pre-sieves (5)(7)(11)(13)(17) and >= 1e12 (19).
 // 2*3*5*7*11*13*17 = 510510 * 19 = 9699690.
 
 static const uint64_t LIMIT_MAX = 18446744073709551609UL; // 2^64-1-6
