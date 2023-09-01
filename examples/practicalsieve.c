@@ -75,15 +75,15 @@ void practicalsieve(uint64_t stop)
    // if (stop >= 3) printf("3\n");
    // for (i = 1; i <= M; i += 2) {
    //    if (GETBIT(sieve, i))
-   //       printf("%llu\n", 3 * i + 2);
+   //       printf("%lu\n", 3 * i + 2);
    //    if (GETBIT(sieve, i + 1))
-   //       printf("%llu\n", 3 * (i + 1) + 1);
+   //       printf("%lu\n", 3 * (i + 1) + 1);
    // }
 
    free((void *) sieve);
    sieve = NULL;
 
-   fprintf(stderr, "Primes found: %lld\n", count);
+   fprintf(stderr, "Primes found: %ld\n", count);
 }
 
 int main(int argc, char** argv)
@@ -91,8 +91,14 @@ int main(int argc, char** argv)
    // count the primes below this number
    uint64_t limit = 1000;
 
-   if (argc >= 2)
+   if (argc >= 2) {
       limit = (uint64_t) strtold(argv[1], NULL);
+   }
+
+   if (limit > 5e+10) {
+      fprintf(stderr, "Limit exceeds 5e+10 (~2GB).\n");
+      return 1;
+   }
 
    practicalsieve(limit);
 

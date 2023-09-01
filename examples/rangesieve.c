@@ -187,16 +187,16 @@ void rangesieve(uint64_t start, uint64_t stop, int print_flag)
       if (start <= 3 && stop >= 3) printf("3\n");
       for (i = 1; i <= M; i += 2) {
          if (GETBIT(sieve, i))
-            printf("%llu\n", n_off + (3 * i + 2));
+            printf("%lu\n", n_off + (3 * i + 2));
          if (GETBIT(sieve, i + 1))
-            printf("%llu\n", n_off + (3 * (i + 1) + 1));
+            printf("%lu\n", n_off + (3 * (i + 1) + 1));
       }
    }
 
    free((void *) sieve);
    sieve = NULL;
 
-   fprintf(stderr, "Primes found: %lld\n", count);
+   fprintf(stderr, "Primes found: %ld\n", count);
 }
 
 int main(int argc, char** argv)
@@ -219,8 +219,13 @@ int main(int argc, char** argv)
       stop  = (uint64_t) strtold(argv[1], NULL);
    }
 
-   if (stop > 0 && stop >= start)
+   if (stop > 0 && stop >= start) {
+      if (stop - start > 5e+10) {
+         fprintf(stderr, "Range distance exceeds 5e+10 (~2GB).\n");
+         return 1;
+      }
       rangesieve(start, stop, print_flag);
+   }
 
    return 0;
 }
