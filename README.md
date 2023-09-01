@@ -26,6 +26,7 @@ are required on the system.
        practicalsieve.c   single big loop
        segmentsieve.c     segmented variant, faster
        rangesieve.c       process range; start stop
+       prangesieve.c      parallel CPU variant
 
     lib/
        Sandbox.pm     Common code for the bin scripts.
@@ -57,6 +58,8 @@ The demos folder is how I learned [Codon](https://github.com/exaloop/codon),
 a Python-like language that compiles to native machine code. They run with
 limited usage, accepting one or two integers and `-p` options. Usage can be
 found at the top of the file.
+
+The examples folder provides progressive demonstrations in C.
 
 ### Dependencies
 
