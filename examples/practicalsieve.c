@@ -21,7 +21,7 @@
 //   gcc -o practicalsieve -I../src -O3 -march=x86-64-v3 practicalsieve.c -lm
 //
 // Usage:
-//   practicalsieve [ N ]   default 100000000 (1e+8)
+//   practicalsieve [ N ]   default 1000
 //   practicalsieve 1e+10
 
 #include <stdint.h>
@@ -38,8 +38,6 @@ void practicalsieve(uint64_t stop)
    int64_t i, c = 0, k = 1, t = 2, j, ij;
    int64_t mem_sz = (M + 2 + 7) / 8;
    byte_t  *sieve;
-
-   int64_t count = (stop < 2) ? 0 : (stop < 3) ? 1 : 2;
 
    sieve = (byte_t *) malloc(mem_sz);
    memset(sieve, 0xff, mem_sz);
@@ -69,8 +67,12 @@ void practicalsieve(uint64_t stop)
       }
    }
 
+   int64_t count = (stop < 2) ? 0 : (stop < 3) ? 1 : 2;
+
    count += popcount(sieve, mem_sz);
 
+   // if (stop >= 2) printf("2\n");
+   // if (stop >= 3) printf("3\n");
    // for (i = 1; i <= M; i += 2) {
    //    if (GETBIT(sieve, i))
    //       printf("%llu\n", 3 * i + 2);
@@ -81,13 +83,13 @@ void practicalsieve(uint64_t stop)
    free((void *) sieve);
    sieve = NULL;
 
-   printf("%lld primes found.\n", count);
+   fprintf(stderr, "Primes found: %lld\n", count);
 }
 
 int main(int argc, char** argv)
 {
    // count the primes below this number
-   uint64_t limit = 100000000;
+   uint64_t limit = 1000;
 
    if (argc >= 2)
       limit = (uint64_t) strtold(argv[1], NULL);
