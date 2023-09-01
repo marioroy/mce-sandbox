@@ -142,7 +142,7 @@ void practicalsieve_precalc(
       pre_sieve[0] = (N_val < 1e12) ? 0xc0 : 0x80;
    }
 
-   // clear composites greater than "sieve_sz"
+   // clear bits greater than "sieve_sz"
    i = mem_sz * 8 - (sieve_sz + 1);
    while (i) {
       CLRBIT(pre_sieve, mem_sz * 8 - i);
