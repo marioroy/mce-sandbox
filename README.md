@@ -145,10 +145,8 @@ quickly fill your disk. A suggestion is specifying a range instead.
 
 This sandbox includes Inline::C and Parse::RecDescent. Both work reasonably
 well across many environments in which MCE runs on. The popcount function
-(in bits.h) is based on popcnt in Math::Prime::Util.
-
-While making this project, I learned of a trick in POE to export variables
-without having to require Exporter.
+(in bits.h) is based on popcnt in Math::Prime::Util. I learned a trick in
+POE to export variables without having to require Exporter.
 
 Thank you, Xuedong Luo for the wonderful sieve algorithm. This repository
 provides parallel implementations, based on Algorithm3.
