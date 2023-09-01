@@ -16,7 +16,7 @@ are required on the system.
        primesieve.pl  Calls the primesieve.org C API for generating primes.
        primeutil.pl   Utilizes the Math::Prime::Util module for primes.
 
-    demo/
+    demos/
        primes1.c      Algorithm3 in C with OpenMP directives.
        primes2.codon  Algorithm3 in Codon, a Python-like language.
        primes3.c      Using libprimesieve C API in C
@@ -52,7 +52,7 @@ More variants using [Math::Prime::Util](https://metacpan.org/pod/Math::Prime::Ut
 and [libprimesieve](https://github.com/kimwalisch/primesieve) were created next.
 They run faster than algorithm3.
 
-The demo folder is how I learned [Codon](https://github.com/exaloop/codon),
+The demos folder is how I learned [Codon](https://github.com/exaloop/codon),
 a Python-like language that compiles to native machine code. They run with
 limited usage, accepting one or two integers and `-p` options. Usage can be
 found at the top of the file.

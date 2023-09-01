@@ -220,7 +220,7 @@ def main():
     start, stop = u64(1), u64(1000)
     loff, print_flag = -1, 0
 
-    # check for print option
+    # check for print option (last option specified)
     if len(argv) > 0 and argv[-1] == "-p":
         print_flag = 1
         argv.pop()

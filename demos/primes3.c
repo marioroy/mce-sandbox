@@ -170,7 +170,7 @@ int main(int argc, char** argv)
     uint64_t start = 1UL, stop = 1000UL;
     int loff = -1, print_flag = 0;
 
-    // check for print option
+    // check for print option (last option specified)
     if (argc > 1 && strcmp(argv[argc-1], "-p") == 0) {
         print_flag = 1;
         argc--;
