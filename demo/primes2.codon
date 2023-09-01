@@ -307,7 +307,7 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
     if start_adj == u64(1):
         pre_sieve[0] = u8(0xc0) if stop < u64(int(1e12)) else u8(0x80)
 
-    # clear composites greater than "sieve_sz"
+    # clear bits greater than "sieve_sz"
     i = mem_sz_p * 8 - (sieve_sz + 1)
     while i:
         CLRBIT(pre_sieve, mem_sz_p * 8 - i)

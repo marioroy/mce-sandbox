@@ -312,7 +312,7 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
         pre_sieve[0] = (stop < 1e12) ? 0xc0 : 0x80;
     }
 
-    // clear composites greater than "sieve_sz"
+    // clear bits greater than "sieve_sz"
     int64_t i = mem_sz_p * 8 - (sieve_sz + 1);
     while (i) {
         CLRBIT(pre_sieve, mem_sz_p * 8 - i);
