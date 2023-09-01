@@ -1,6 +1,6 @@
 ## Sandboxing with Perl + MCE + Inline::C
 
-A journey with Perl, MCE, and Inline::C to count, sum, and generate prime numbers.
+A journey with Perl, MCE, Inline::C (and more) to count, sum, and generate prime numbers.
 
 The sandbox has the minimum required to run the practical sieve demonstration.
 Perl MCE and Inline::C modules are pre-installed under the lib directory.
@@ -144,12 +144,14 @@ quickly fill your disk. A suggestion is specifying a range instead.
 ### Acknowledgements
 
 This sandbox includes Inline::C and Parse::RecDescent. Both work reasonably
-well across many environments in which MCE runs on.
-
-The popcount function (in bits.h) is based on popcnt in Math::Prime::Util.
+well across many environments in which MCE runs on. The popcount function
+(in bits.h) is based on popcnt in Math::Prime::Util.
 
 While making this project, I learned of a trick in POE to export variables
 without having to require Exporter.
+
+Thank you, Xuedong Luo for the wonderful sieve algorithm. This repository
+provides parallel implementations, based on Algorithm3.
 
 ### References
 
