@@ -20,10 +20,7 @@ _Inline
 *.swp
 *.tmp
 
-practicalsieve
-practicalsieve.exe
-primes
-primes.exe
+# Demos
 primes1
 primes1.exe
 primes2
@@ -32,6 +29,12 @@ primes3
 primes3.exe
 primes4
 primes4.exe
+
+# Examples
+practicalsieve
+practicalsieve.exe
 segmentsieve
 segmentsieve.exe
+rangesieve
+rangesieve.exe
 

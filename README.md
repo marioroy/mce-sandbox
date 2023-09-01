@@ -25,6 +25,7 @@ are required on the system.
     examples/         Progressive demonstrations.
        practicalsieve.c   single big loop
        segmentsieve.c     segmented variant, faster
+       rangesieve.c       process range; start stop
 
     lib/
        Sandbox.pm     Common code for the bin scripts.
