@@ -216,8 +216,11 @@ def gpusieve(start: u64, stop: u64, print_flag: int) -> None:
 
     MM.append(M + 2)
 
+    bsize = 8
+    gsize = num_segments // bsize + (1 if num_segments % bsize else 0)
+
     ksieve( gpu.raw(sieve), gpu.raw(is_prime), gpu.raw(JJ), step_sz,
-        num_segments, start_adj, stop, j_off, grid=num_segments, block=8 )
+        num_segments, start_adj, stop, j_off, grid=gsize, block=bsize )
 
     if start <= u64(2) and stop >= u64(2): count += 1
     if start <= u64(3) and stop >= u64(3): count += 1
