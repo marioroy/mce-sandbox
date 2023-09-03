@@ -159,15 +159,15 @@ def gpusieve(start: u64, stop: u64, print_flag: int) -> None:
     else:
         start_adj = u64(1)
 
-    step_sz = 39600
-    if   stop >= strToUInt("1e+19"): step_sz *= 88
-    elif stop >= strToUInt("1e+18"): step_sz *= 77
-    elif stop >= strToUInt("1e+17"): step_sz *= 66
-    elif stop >= strToUInt("1e+16"): step_sz *= 55
-    elif stop >= strToUInt("1e+15"): step_sz *= 44
-    elif stop >= strToUInt("1e+14"): step_sz *= 33
-    elif stop >= strToUInt("1e+13"): step_sz *= 22
-    elif stop >= strToUInt("1e+12"): step_sz *= 11
+    step_sz = 39600 if stop < u64(int(1e14)) else 72000
+    if   stop >= strToUInt("1e+19"): step_sz *= 80
+    elif stop >= strToUInt("1e+18"): step_sz *= 70
+    elif stop >= strToUInt("1e+17"): step_sz *= 60
+    elif stop >= strToUInt("1e+16"): step_sz *= 50
+    elif stop >= strToUInt("1e+15"): step_sz *= 40
+    elif stop >= strToUInt("1e+14"): step_sz *= 30
+    elif stop >= strToUInt("1e+13"): step_sz *= 20
+    elif stop >= strToUInt("1e+12"): step_sz *= 10
 
     num_segments = int((stop - start_adj + u64(step_sz)) // u64(step_sz))
     is_prime = makeprimes(stop)
