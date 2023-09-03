@@ -1,6 +1,6 @@
 
 // Algorithm3 (parallel range variant).
-//   C demonstration by Mario Roy, 2023-08-31
+//   C demonstration by Mario Roy, 2023-09-03
 //
 // Xuedong Luo:
 //   A practical sieve algorithm for finding prime numbers.
@@ -25,7 +25,6 @@
 //   prangesieve 100 -p              print primes found
 //   prangesieve 1e+10 1.1e+10       count primes found
 //   prangesieve 87233720365000000 87233720368547757
-//   prangesieve 18446744073000000000 18446744073709551609
 //   prangesieve 1e11 1.1e11
 
 #include <omp.h>
@@ -67,42 +66,10 @@ byte_t *makeprimes(uint64_t stop)
 
 void prangesieve(uint64_t start, uint64_t stop, int print_flag)
 {
-   byte_t *is_prime = makeprimes(stop);
-   int64_t count = 0;
-
    // adjust start to a multiple of 6; then substract 6 and add 1
    uint64_t start_adj = (start > 5)
       ? start - (start % 6) - 6 + 1
       : 1;
-
-   int64_t M = (stop - start_adj + (stop & 1)) / 3;
-   uint64_t n_off = start_adj - 1;
-   int64_t j_off = n_off / 3;
-   int64_t mem_sz = (M + 2 + 7) / 8;
-   byte_t  *sieve;
-
-   sieve = (byte_t *) malloc(mem_sz);
-   memset(sieve, 0xff, mem_sz);
-   CLRBIT(sieve, 0);
-
-   // clear bits less than start
-   if (n_off + ((3 * 1 + 1) | 1) < start) {
-      CLRBIT(sieve, 1);
-      if (n_off + ((3 * 2 + 1) | 1) < start)
-         CLRBIT(sieve, 2);
-   }
-
-   // clear bits greater than stop
-   int64_t i = mem_sz * 8 - (M + 2);
-   while (i) {
-      CLRBIT(sieve, mem_sz * 8 - i);
-      i--;
-   }
-   if (n_off + ((3 * (M + 1) + 1) | 1) > stop) {
-      CLRBIT(sieve, M + 1);
-      if (n_off + ((3 * M + 1) | 1) > stop)
-         CLRBIT(sieve, M);
-   }
 
    int64_t step_sz = (stop < 1e12) ? 510510 * 12 : 9699690 * 2;
    if      ( stop >= 1e+19 ) { step_sz *= 8; }
@@ -115,20 +82,61 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
    else if ( stop >= 1e+12 ) { step_sz *= 1; }
 
    int64_t num_segments = (stop - start_adj + step_sz) / step_sz;
-   int64_t cc = 0, kk = 1, tt = 2;
+   byte_t *is_prime = makeprimes(stop);
+   int64_t count = 0;
 
-   // populate JJ array
-   int64_t *JJ = malloc(num_segments * sizeof(int64_t));
-   JJ[0] = 0;
+   int64_t M = (stop - start_adj + (stop & 1)) / 3;
+   uint64_t n_off = start_adj - 1;
+   int64_t j_off = n_off / 3;
+   int64_t mem_sz = (M + 2 + 7) / 8 + (num_segments - 1);
+   byte_t  *sieve;
+
+   sieve = (byte_t *) malloc(mem_sz);
+   if (sieve == NULL) {
+      fprintf(stderr, "error: failed to allocate sieve array.\n");
+      exit(2);
+   }
+   memset(sieve, 0xff, mem_sz);
+   CLRBIT(sieve, 0);
+
+   // clear bits less than start
+   if (n_off + ((3 * 1 + 1) | 1) < start) {
+      CLRBIT(sieve, 1);
+      if (n_off + ((3 * 2 + 1) | 1) < start)
+         CLRBIT(sieve, 2);
+   }
+
+   // clear bits greater than stop
+   int64_t i = (mem_sz - (num_segments - 1)) * 8 - (M + 2);
+   while (i) {
+      CLRBIT(sieve, mem_sz * 8 - i);
+      i--;
+   }
+   if (n_off + ((3 * (M + 1) + 1) | 1) > stop) {
+      CLRBIT(sieve, M + 1 + (num_segments - 1) * 8);
+      if (n_off + ((3 * M + 1) | 1) > stop)
+         CLRBIT(sieve, M + (num_segments - 1) * 8);
+   }
+
+   // create JJ, MM lists; clear one-byte padding between segments
+   int64_t *JJ = malloc(num_segments * sizeof(int64_t)); JJ[0] = 0;
+   int64_t *MM = malloc(num_segments * sizeof(int64_t));
+   int64_t off = 0;
 
    for (int64_t n = 0; n < num_segments - 1; n++) {
       uint64_t low  = start_adj + (step_sz * n);
       uint64_t high = low + step_sz - 1;
       if (high > stop || high < low) high = stop;
-
       int64_t m = high / 3;
       JJ[n + 1] = m - j_off;
+      MM[n + 0] = m - j_off;
+      for (int i = 1; i <= 8; i++)
+         CLRBIT(sieve, m - j_off + i + off);
+      off += 8;
    }
+
+   MM[num_segments - 1] = M + 2;
+   int64_t cc = 0, kk = 1, tt = 2;
 
    #pragma omp parallel for schedule(static, 1)
    for (int64_t n = 0; n < num_segments; n++) {
@@ -140,6 +148,7 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
       int64_t m = high / 3;
       int64_t c = cc, k = kk, t = tt, j, ij;
       int64_t j_off2 = JJ[n];
+      int64_t s_off = n * 8;  // account for one-byte padding offset
 
       for (int64_t i = 1; i <= q; i++) {
          k  = 3 - k, c += 4 * k * i, j = c;
@@ -154,7 +163,7 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
             }
             // clear composites
             while (j <= m) {
-               CLRBIT(sieve, j - j_off);
+               CLRBIT(sieve, j - j_off + s_off);
                j += ij, ij = t - ij;
             }
          }
@@ -166,19 +175,24 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
 
    if (start <= 2 && stop >= 2) count++;
    if (start <= 3 && stop >= 3) count++;
+
    count += popcount(sieve, mem_sz);
 
    if (print_flag) {
       if (start <= 2 && stop >= 2) printf("2\n");
       if (start <= 3 && stop >= 3) printf("3\n");
+      int64_t off = 0, num = MM[0], ind = 0;
       for (i = 1; i <= M; i += 2) {
-         if (GETBIT(sieve, i))
+         if (i >= num)
+            off += 8, num = MM[++ind];
+         if (GETBIT(sieve, i + off))
             printf("%lu\n", n_off + (3 * i + 2));
-         if (GETBIT(sieve, i + 1))
+         if (GETBIT(sieve, i + 1 + off))
             printf("%lu\n", n_off + (3 * (i + 1) + 1));
       }
    }
 
+   free((void *) MM); MM = NULL;
    free((void *) sieve); sieve = NULL;
 
    fprintf(stderr, "Primes found: %ld\n", count);
@@ -205,8 +219,8 @@ int main(int argc, char** argv)
    }
 
    if (stop > 0 && stop >= start) {
-      if (stop - start > 5e+10) {
-         fprintf(stderr, "Range distance exceeds 5e+10 (~2GB).\n");
+      if (stop - start > 1e+11) {
+         fprintf(stderr, "Range distance exceeds 1e+11 (~4GB).\n");
          return 1;
       }
       prangesieve(start, stop, print_flag);
