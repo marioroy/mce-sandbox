@@ -1,0 +1,266 @@
+
+# Algorithm3 (parallel range variant).
+#   Codon GPU demonstration by Mario Roy, 2023-09-03
+#
+# Xuedong Luo:
+#   A practical sieve algorithm for finding prime numbers.
+#   ACM Volume 32 Issue 3, March 1989, Pages 344-346
+#   https://dl.acm.org/doi/pdf/10.1145/62065.62072
+#   http://dl.acm.org/citation.cfm?doid=62065.62072
+#
+#   "Based on the sieve of Eratosthenes, a faster and more compact
+#    algorithm is presented for finding all primes between 2 and N.
+#    Avoid all composites that have 2 or 3 as one of their prime
+#    factors (where i is odd)."
+#
+#   { 0, 5, 7, 11, 13, ... 3i + 2, 3(i + 1) + 1, ..., N }
+#     0, 1, 2,  3,  4, ... list indices (0 is not used)
+#
+# Build:
+#   codon build -release -o gpusieve gpusieve.codon
+#
+#   Codon Documentation https://docs.exaloop.io/codon/
+#   Codon GitHub Repo   https://github.com/exaloop/codon
+#
+# Usage:
+#   gpusieve [ N [ N ] [ -p ] ]  default 1 1000
+#   gpusieve 100 -p              print primes found
+#   gpusieve 1e+10 1.1e+10       count primes found
+#   gpusieve 87233720365000000 87233720368547757
+#   gpusieve 1e11 1.1e11
+
+import math
+import gpu
+from sys import argv, exit, stderr, stdout
+
+def strToUInt(what: str) -> u64:
+    # Convert a string to UInt, supporting scientific notation.
+    try:
+        n = u64(what)
+    except:
+        s = f"{float(what):.1f}"
+        p = s.rfind('.')
+        n = u64(s[:p])
+    return n
+
+
+_POPCNT_BYTE = [
+    0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+    3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8 ]
+
+def popcount(s, size):
+    count, i = 0, 0
+
+    if size == 0:
+        return count
+
+    if size > 8:
+        a = Ptr[u64](s.arr.ptr.as_byte())
+        asize = (size + 7) // 8 - 1
+
+        m1  = u64(0x5555555555555555)
+        m2  = u64(0x3333333333333333)
+        m4  = u64(0x0f0f0f0f0f0f0f0f)
+        h01 = u64(0x0101010101010101)
+
+        for j in range(asize):
+            b = a[j]
+            b =  b       - ((b >> u64(1))  & m1)
+            b = (b & m2) + ((b >> u64(2))  & m2)
+            b = (b       +  (b >> u64(4))) & m4
+            count += int((b * h01) >> u64(56))
+
+        i = asize * 8
+
+    for j in range(i, size):
+        count += _POPCNT_BYTE[int(s[j])]
+
+    return count
+
+
+@inline
+def CLRBIT(s, i):
+    s[i >> 3] &= u8(~(1 << (i & 7)))
+
+@inline
+def GETBIT(s, i) -> u8:
+    return s[i >> 3] & u8(1 << (i & 7))
+
+@inline
+def SETBIT(s, i):
+    s[i >> 3] |= u8(1 << (i & 7))
+
+
+def makeprimes(stop: u64) -> List[u8]:
+
+    q = int(math.sqrt(float(stop))) // 3
+    mem_sz = (q + 2 + 7) // 8
+    c, k, t, j, ij = 0, 1, 2, 0, 0
+
+    array = List[u8]( Array[u8](mem_sz), mem_sz )
+    str.memset(array.arr.ptr.as_byte(), byte(0xff), mem_sz)
+    CLRBIT(array, 0)
+
+    # clear small composites <= q
+    for i in range(1, q + 1):
+        k  = 3 - k; c += 4 * k * i; j = c
+        ij = 2 * i * (3 - k) + 1; t += 4 * k
+        if GETBIT(array, i):
+            while j <= q:
+                CLRBIT(array, j)
+                j += ij; ij = t - ij
+
+    return array
+
+
+@gpu.kernel
+def ksieve(sieve, is_prime, jj, step_sz, num_segments, start_adj, stop, j_off):
+
+    n = (gpu.block.x * gpu.block.dim.x) + gpu.thread.x
+    if n >= num_segments: return
+
+    low  = start_adj + u64(step_sz * n)
+    high = low + u64(step_sz) - u64(1)
+    if high > stop or high < low: high = stop
+
+    q = int(math.sqrt(float(high))) // 3
+    m = int(high // u64(3))
+    c, k, t, j, ij = 0, 1, 2, 0, 0
+    j_off2 = jj[n]
+    s_off = n * 8  # account for one-byte padding offset
+
+    for i in range(1, q + 1):
+        k  = 3 - k; c += 4 * k * i; j = c
+        ij = 2 * i * (3 - k) + 1; t += 4 * k
+        if GETBIT(is_prime, i):
+            # skip numbers before this segment
+            if j < j_off + j_off2:
+                j += (j_off + j_off2 - j) // t * t + ij
+                ij = t - ij
+                if (j < j_off + j_off2):
+                    j += ij; ij = t - ij
+            # clear composites
+            while j <= m:
+                CLRBIT(sieve, j - j_off + s_off)
+                j += ij; ij = t - ij
+
+
+def gpusieve(start: u64, stop: u64, print_flag: int) -> None:
+
+    # adjust start to a multiple of 6; then substract 6 and add 1
+    if start > u64(5):
+        start_adj = start - (start % u64(6)) - u64(6) + u64(1)
+    else:
+        start_adj = u64(1)
+
+    step_sz = 39600
+    if   stop >= strToUInt("1e+19"): step_sz *= 8
+    elif stop >= strToUInt("1e+18"): step_sz *= 7
+    elif stop >= strToUInt("1e+17"): step_sz *= 6
+    elif stop >= strToUInt("1e+16"): step_sz *= 5
+    elif stop >= strToUInt("1e+15"): step_sz *= 4
+    elif stop >= strToUInt("1e+14"): step_sz *= 3
+    elif stop >= strToUInt("1e+13"): step_sz *= 2
+    elif stop >= strToUInt("1e+12"): step_sz *= 1
+
+    num_segments = int((stop - start_adj + u64(step_sz)) // u64(step_sz))
+    is_prime = makeprimes(stop)
+    count = 0
+
+    M = int((stop - start_adj + (stop & u64(1))) // u64(3))
+    n_off = u64(start_adj - u64(1))
+    j_off = int(n_off // u64(3))
+    mem_sz = (M + 2 + 7) // 8 + (num_segments - 1)
+
+    sieve = List[u8]( Array[u8](mem_sz), mem_sz )
+    str.memset(sieve.arr.ptr.as_byte(), byte(0xff), mem_sz)
+    CLRBIT(sieve, 0)
+
+    # clear bits less than start
+    if n_off + u64((3 * 1 + 1) | 1) < start:
+        CLRBIT(sieve, 1)
+        if n_off + u64((3 * 2 + 1) | 1) < start:
+            CLRBIT(sieve, 2)
+
+    # clear bits greater than stop
+    i = (mem_sz - (num_segments - 1)) * 8 - (M + 2)
+    while i:
+        CLRBIT(sieve, mem_sz * 8 - i)
+        i -= 1
+    if n_off + u64((3 * (M + 1) + 1) | 1) > stop:
+        CLRBIT(sieve, M + 1 + (num_segments - 1) * 8)
+        if n_off + u64((3 * M + 1) | 1) > stop:
+            CLRBIT(sieve, M + (num_segments - 1) * 8)
+
+    # create JJ, MM lists; clear one-byte padding between segments
+    JJ = list[int](); JJ.append(0)
+    MM = list[int]()
+    off = 0
+
+    for n in range(num_segments - 1):
+        low  = start_adj + u64(step_sz * n)
+        high = low + u64(step_sz) - u64(1)
+        if high > stop or high < low: high = stop
+        m = int(high // u64(3))
+        JJ.append(m - j_off)
+        MM.append(m - j_off)
+        for i in range(1, 8 + 1):
+            CLRBIT(sieve, m - j_off + i + off)
+        off += 8
+
+    MM.append(M + 2)
+
+    ksieve( gpu.raw(sieve), gpu.raw(is_prime), gpu.raw(JJ), step_sz,
+        num_segments, start_adj, stop, j_off, grid=num_segments, block=8 )
+
+    if start <= u64(2) and stop >= u64(2): count += 1
+    if start <= u64(3) and stop >= u64(3): count += 1
+
+    count += popcount(sieve, mem_sz)
+
+    if print_flag:
+        if start <= u64(2) and stop >= u64(2): print("2")
+        if start <= u64(3) and stop >= u64(3): print("3")
+        off, num = 0, MM.pop(0)
+        for i in range(1, M + 1, 2):
+            if i >= num:
+                off += 8; num = MM.pop(0)
+            if (GETBIT(sieve, i + off)):
+                print(n_off + u64(3 * i + 2))
+            if (GETBIT(sieve, i + 1 + off)):
+                print(n_off + u64(3 * (i + 1) + 1))
+
+    print(f"Primes found: {count}", file=stderr)
+
+
+def main():
+    # find primes in range, inclusively
+    start, stop = u64(1), u64(1000)
+    loff, print_flag = -1, 0
+
+    # check for print option (last option specified)
+    if len(argv) > 0 and argv[-1] == "-p":
+        print_flag = 1
+        argv.pop()
+
+    if len(argv) > 2:
+        start = strToUInt(argv[1])
+        stop  = strToUInt(argv[2])
+    elif len(argv) > 1:
+        stop  = strToUInt(argv[1])
+
+    if stop > u64(0) and stop >= start: 
+        if stop - start > strToUInt("1e+11"):
+            print("Range distance exceeds 1e+11 (~4GB).", file=stderr)
+            exit(1)
+        gpusieve(start, stop, print_flag)
+
+if __name__ == "__main__":
+    main()
+

@@ -26,7 +26,9 @@ are required on the system.
        practicalsieve.c   single big loop
        segmentsieve.c     segmented variant, faster
        rangesieve.c       process range; start stop
-       prangesieve.c      parallel CPU variant
+       prangesieve.c      parallel range in C
+       cpusieve.codon     parallel range in Codon (CPU)
+       gpusieve.codon     parallel range in Codon (GPU)
 
     lib/
        Sandbox.pm     Common code for the bin scripts.
@@ -59,7 +61,8 @@ a Python-like language that compiles to native machine code. They run with
 limited usage, accepting one or two integers and `-p` options. Usage can be
 found at the top of the file.
 
-The examples folder provides progressive demonstrations in C.
+The examples folder provides progressive demonstrations in C including
+parallel range variants in Codon.
 
 ### Dependencies
 

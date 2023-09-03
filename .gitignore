@@ -20,6 +20,7 @@ _Inline
 *.swp
 *.tmp
 *.exe
+*.ptx
 
 # Demos
 primes1
@@ -32,4 +33,6 @@ practicalsieve
 segmentsieve
 rangesieve
 prangesieve
+cpusieve
+gpusieve
 
