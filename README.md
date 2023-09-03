@@ -26,9 +26,9 @@ are required on the system.
        practicalsieve.c   single big loop
        segmentsieve.c     segmented variant, faster
        rangesieve.c       process range; start stop
-       prangesieve.c      parallel range in C
-       cpusieve.codon     parallel range in Codon (CPU)
-       gpusieve.codon     parallel range in Codon (GPU)
+       prangesieve.c      parallel rangesieve in C
+       cpusieve.codon     parallel rangesieve in Codon (CPU)
+       gpusieve.codon     parallel rangesieve in Codon (GPU)
 
     lib/
        Sandbox.pm     Common code for the bin scripts.
