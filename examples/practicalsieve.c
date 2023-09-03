@@ -95,8 +95,8 @@ int main(int argc, char** argv)
       limit = (uint64_t) strtold(argv[1], NULL);
    }
 
-   if (limit > 5e+10) {
-      fprintf(stderr, "Limit exceeds 5e+10 (~2GB).\n");
+   if (limit > 1e+11) {
+      fprintf(stderr, "Limit exceeds 1e+11 (~4GB).\n");
       return 1;
    }
 

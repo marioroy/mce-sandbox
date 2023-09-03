@@ -25,7 +25,7 @@
 //   prangesieve 100 -p              print primes found
 //   prangesieve 1e+10 1.1e+10       count primes found
 //   prangesieve 87233720365000000 87233720368547757
-//   prangesieve 1e11 1.1e11
+//   prangesieve 1e12 1.1e12
 
 #include <omp.h>
 #include <stdint.h>
@@ -223,7 +223,10 @@ int main(int argc, char** argv)
          fprintf(stderr, "Range distance exceeds 1e+11 (~4GB).\n");
          return 1;
       }
+      double tstart = omp_get_wtime();
       prangesieve(start, stop, print_flag);
+      double tend = omp_get_wtime();
+      fprintf(stderr, "Seconds: %0.3lf\n", tend - tstart);
    }
 
    return 0;

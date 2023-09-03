@@ -29,10 +29,11 @@
 #   OMP_NUM_THREADS=8 ./cpusieve 100 -p              print primes found
 #   OMP_NUM_THREADS=8 ./cpusieve 1e+10 1.1e+10       count primes found
 #   OMP_NUM_THREADS=8 ./cpusieve 87233720365000000 87233720368547757
-#   OMP_NUM_THREADS=8 ./cpusieve 1e11 1.1e11
+#   OMP_NUM_THREADS=8 ./cpusieve 1e12 1.1e12
 
 import math
 from sys import argv, exit, stderr, stdout
+from time import time
 
 def strToUInt(what: str) -> u64:
     # Convert a string to UInt, supporting scientific notation.
@@ -264,7 +265,11 @@ def main():
         if stop - start > strToUInt("1e+11"):
             print("Range distance exceeds 1e+11 (~4GB).", file=stderr)
             exit(1)
+        tstart = time()
         prangesieve(start, stop, print_flag)
+        tend = time()
+        print(f"Seconds: {tend - tstart:0.3f}", file=stderr)
+
 
 if __name__ == "__main__":
     main()

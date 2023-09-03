@@ -27,11 +27,12 @@
 #   gpusieve 100 -p              print primes found
 #   gpusieve 1e+10 1.1e+10       count primes found
 #   gpusieve 87233720365000000 87233720368547757
-#   gpusieve 1e11 1.1e11
+#   gpusieve 1e12 1.1e12
 
 import math
 import gpu
 from sys import argv, exit, stderr, stdout
+from time import time
 
 def strToUInt(what: str) -> u64:
     # Convert a string to UInt, supporting scientific notation.
@@ -151,7 +152,7 @@ def ksieve(sieve, is_prime, jj, step_sz, num_segments, start_adj, stop, j_off):
                 j += ij; ij = t - ij
 
 
-def gpusieve(start: u64, stop: u64, print_flag: int) -> None:
+def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
 
     # adjust start to a multiple of 6; then substract 6 and add 1
     if start > u64(5):
@@ -262,7 +263,11 @@ def main():
         if stop - start > strToUInt("1e+11"):
             print("Range distance exceeds 1e+11 (~4GB).", file=stderr)
             exit(1)
-        gpusieve(start, stop, print_flag)
+        tstart = time()
+        prangesieve(start, stop, print_flag)
+        tend = time()
+        print(f"Seconds: {tend - tstart:0.3f}", file=stderr)
+
 
 if __name__ == "__main__":
     main()

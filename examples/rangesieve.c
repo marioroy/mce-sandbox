@@ -26,7 +26,7 @@
 //   rangesieve 1e+10 1.1e+10       count primes found
 //   rangesieve 87233720365000000 87233720368547757
 //   rangesieve 18446744073000000000 18446744073709551609
-//   rangesieve 1e11 1.1e11
+//   rangesieve 1e12 1.1e12
 
 #include <stdint.h>
 #include <string.h>
@@ -220,8 +220,8 @@ int main(int argc, char** argv)
    }
 
    if (stop > 0 && stop >= start) {
-      if (stop - start > 5e+10) {
-         fprintf(stderr, "Range distance exceeds 5e+10 (~2GB).\n");
+      if (stop - start > 1e+11) {
+         fprintf(stderr, "Range distance exceeds 1e+11 (~4GB).\n");
          return 1;
       }
       rangesieve(start, stop, print_flag);
