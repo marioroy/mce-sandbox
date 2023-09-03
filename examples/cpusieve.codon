@@ -139,7 +139,7 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
     else:
         start_adj = u64(1)
 
-    step_sz = 510510 * 12 if stop < u64(int(1e12)) else 9699690 * 2
+    step_sz = 510510 * 12 if stop < u64(int(1e12)) else 9699690
     if   stop >= strToUInt("1e+19"): step_sz *= 8
     elif stop >= strToUInt("1e+18"): step_sz *= 7
     elif stop >= strToUInt("1e+17"): step_sz *= 6

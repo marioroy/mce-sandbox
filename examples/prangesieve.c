@@ -71,7 +71,7 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
       ? start - (start % 6) - 6 + 1
       : 1;
 
-   int64_t step_sz = (stop < 1e12) ? 510510 * 12 : 9699690 * 2;
+   int64_t step_sz = (stop < 1e12) ? 510510 * 12 : 9699690;
    if      ( stop >= 1e+19 ) { step_sz *= 8; }
    else if ( stop >= 1e+18 ) { step_sz *= 7; }
    else if ( stop >= 1e+17 ) { step_sz *= 6; }
