@@ -148,7 +148,7 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
       int64_t m = high / 3;
       int64_t c = cc, k = kk, t = tt, j, ij;
       int64_t j_off2 = JJ[n];
-      int64_t s_off = n * 8;  // account for one-byte padding offset
+      int64_t s_off = j_off - n * 8;  // account for one-byte padding offset
 
       for (int64_t i = 1; i <= q; i++) {
          k  = 3 - k, c += 4 * k * i, j = c;
@@ -163,7 +163,7 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
             }
             // clear composites
             while (j <= m) {
-               CLRBIT(sieve, j - j_off + s_off);
+               CLRBIT(sieve, j - s_off);
                j += ij, ij = t - ij;
             }
          }

@@ -208,7 +208,7 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
         m = int(high // u64(3))
         c, k, t, j, ij = cc, kk, tt, 0, 0
         j_off2 = JJ[n]
-        s_off = n * 8  # account for one-byte padding offset
+        s_off = j_off - n * 8  # account for one-byte padding offset
 
         for i in range(1, q + 1):
             k  = 3 - k; c += 4 * k * i; j = c
@@ -222,7 +222,7 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
                         j += ij; ij = t - ij
                 # clear composites
                 while j <= m:
-                    CLRBIT(sieve, j - j_off + s_off)
+                    CLRBIT(sieve, j - s_off)
                     j += ij; ij = t - ij
 
     if start <= u64(2) and stop >= u64(2): count += 1
