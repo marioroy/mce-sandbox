@@ -121,7 +121,7 @@ def makeprimes(stop: u64) -> List[u8]:
 
 
 @gpu.kernel
-def ksieve(sieve, is_prime, jj, step_sz, num_segments, start_adj, stop, j_off):
+def gpusieve(sieve, is_prime, jj, step_sz, num_segments, start_adj, stop, j_off):
 
     n = (gpu.block.x * gpu.block.dim.x) + gpu.thread.x
     if n >= num_segments: return
@@ -160,7 +160,13 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
     else:
         start_adj = u64(1)
 
-    step_sz = 39600 if stop < u64(int(1e14)) else 72000
+    if stop < u64(int(1e14)):
+        bsize, step_sz =  8, 39600
+    elif stop < u64(int(1e16)):
+        bsize, step_sz = 16, 39600 * 3
+    else:
+        bsize, step_sz = 32, 39600 * 5
+
     if   stop >= strToUInt("1e+19"): step_sz *= 80
     elif stop >= strToUInt("1e+18"): step_sz *= 70
     elif stop >= strToUInt("1e+17"): step_sz *= 60
@@ -216,11 +222,9 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
         off += 8
 
     MM.append(M + 2)
-
-    bsize = 8
     gsize = num_segments // bsize + (1 if num_segments % bsize else 0)
 
-    ksieve( gpu.raw(sieve), gpu.raw(is_prime), gpu.raw(JJ), step_sz,
+    gpusieve( gpu.raw(sieve), gpu.raw(is_prime), gpu.raw(JJ), step_sz,
         num_segments, start_adj, stop, j_off, grid=gsize, block=bsize )
 
     if start <= u64(2) and stop >= u64(2): count += 1
