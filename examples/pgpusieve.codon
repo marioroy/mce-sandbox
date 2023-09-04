@@ -209,6 +209,7 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
 
     # TODO: The 'bsize' and 'gsize' values are not used.
     # @par(gpu=True) syntax does not support (grid=?, block=?) options.
+    # https://github.com/exaloop/codon/issues/466
 
     @par(gpu=True, collapse=1)
     for n in range(num_segments):
