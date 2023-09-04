@@ -28,6 +28,18 @@
 #   gpusieve 1e+10 1.1e+10       count primes found
 #   gpusieve 87233720365000000 87233720368547757
 #   gpusieve 1e12 1.1e12
+#
+# NVIDIA GeForce RTX 3070 Results:   Seconds        NPrimes
+#   gpusieve 1e+9  . . . . . . . . .  0.076s     50,847,534
+#   gpusieve 1e+10 . . . . . . . . .  0.678s    455,052,511
+#   gpusieve 1e+11 . . . . . . . . .  9.469s  4,118,054,813
+#   gpusieve 1e+12 1.1e+12 . . . . . 15.183s  3,612,791,400
+#   gpusieve 1e+13 1.01e+13  . . . . 17.968s  3,340,141,707
+#   gpusieve 1e+14 1.001e+14 . . . . 21.981s  3,102,063,927
+#   gpusieve 1e+15 1.0001e+15  . . . 24.549s  2,895,317,534
+#   gpusieve 1e+16 1.00001e+16 . . . 27.558s  2,714,336,584
+#   gpusieve 1e+17 1.000001e+17  . . 38.371s  2,554,712,095
+#   gpusieve 1e+18 1.0000001e+18 . . 68.059s  2,412,731,214
 
 import math
 import gpu
