@@ -86,20 +86,9 @@ def popcount(s, size):
     return count
 
 
-_UNSET_BIT = Ptr[u8](8)
-_UNSET_BIT[0] = u8(~(1 << 0) & 0xff)
-_UNSET_BIT[1] = u8(~(1 << 1) & 0xff)
-_UNSET_BIT[2] = u8(~(1 << 2) & 0xff)
-_UNSET_BIT[3] = u8(~(1 << 3) & 0xff)
-_UNSET_BIT[4] = u8(~(1 << 4) & 0xff)
-_UNSET_BIT[5] = u8(~(1 << 5) & 0xff)
-_UNSET_BIT[6] = u8(~(1 << 6) & 0xff)
-_UNSET_BIT[7] = u8(~(1 << 7) & 0xff)
-
 @inline
 def CLRBIT(s, i):
-  # s[i >> 3] &= u8(~(1 << (i & 7)))
-    s[i >> 3] &= _UNSET_BIT[i & 7]
+    s[i >> 3] &= ~(u8(1) << (u8(i) & u8(7)))
 
 @inline
 def GETBIT(s, i) -> u8:

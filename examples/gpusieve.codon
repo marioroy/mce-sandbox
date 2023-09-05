@@ -99,7 +99,7 @@ def popcount(s, size):
 
 @inline
 def CLRBIT(s, i):
-    s[i >> 3] &= u8(~(1 << (i & 7)))
+    s[i >> 3] &= ~(u8(1) << (u8(i) & u8(7)))
 
 @inline
 def GETBIT(s, i) -> u8:
