@@ -76,7 +76,7 @@ def popcount(s, size):
         return count
 
     if size > 8:
-        a = Ptr[u64](s.arr.ptr.as_byte())
+        a = Ptr[u64](s.as_byte())
         asize = (size + 7) // 8 - 1
 
         m1  = u64(0x5555555555555555)
@@ -241,7 +241,8 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
     if start <= u64(2) and stop >= u64(2): count += 1
     if start <= u64(3) and stop >= u64(3): count += 1
 
-    count += popcount(sieve, mem_sz)
+    s_ptr = sieve.arr.ptr
+    count += popcount(s_ptr, mem_sz)
 
     if print_flag:
         if start <= u64(2) and stop >= u64(2): print("2")
@@ -250,9 +251,9 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
         for i in range(1, M + 1, 2):
             if i >= num:
                 off += 8; num = MM.pop(0)
-            if (GETBIT(sieve, i + off)):
+            if (GETBIT(s_ptr, i + off)):
                 print(n_off + u64(3 * i + 2))
-            if (GETBIT(sieve, i + 1 + off)):
+            if (GETBIT(s_ptr, i + 1 + off)):
                 print(n_off + u64(3 * (i + 1) + 1))
 
     print(f"Primes found: {count}", file=stderr)

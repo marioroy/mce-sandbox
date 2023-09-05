@@ -74,7 +74,7 @@ def popcount(s, size):
         return count
 
     if size > 8:
-        a = Ptr[u64](s.arr.ptr.as_byte())
+        a = Ptr[u64](s.as_byte())
         asize = (size + 7) // 8 - 1
 
         m1  = u64(0x5555555555555555)
@@ -197,8 +197,8 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
     j_off = int(n_off // u64(3))
     mem_sz = (M + 2 + 7) // 8 + (num_segments - 1)
 
-    sieve = List[u8]( Array[u8](mem_sz), mem_sz )
-    str.memset(sieve.arr.ptr.as_byte(), byte(0xff), mem_sz)
+    sieve = Ptr[u8](mem_sz)
+    str.memset(sieve.as_byte(), byte(0xff), mem_sz)
     CLRBIT(sieve, 0)
 
     # clear bits less than start
@@ -236,8 +236,9 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
     MM.append(M + 2)
     gsize = num_segments // bsize + (1 if num_segments % bsize else 0)
 
-    gpusieve( gpu.raw(sieve), gpu.raw(is_prime), gpu.raw(JJ), step_sz,
-        num_segments, start_adj, stop, j_off, grid=gsize, block=bsize )
+    gpusieve( gpu.Pointer(sieve, mem_sz), gpu.raw(is_prime), gpu.raw(JJ),
+        step_sz, num_segments, start_adj, stop, j_off,
+        grid=gsize, block=bsize )
 
     if start <= u64(2) and stop >= u64(2): count += 1
     if start <= u64(3) and stop >= u64(3): count += 1
