@@ -148,7 +148,10 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
       int64_t m = high / 3;
       int64_t c = cc, k = kk, t = tt, j, ij;
       int64_t j_off2 = JJ[n];
-      int64_t s_off = j_off - n * 8;  // account for one-byte padding offset
+
+      // account for one-byte padding (8 bits) between segments
+      // this guarantees that writes are safe between adjacent threads
+      int64_t s_off = j_off - n * 8;
 
       for (int64_t i = 1; i <= q; i++) {
          k  = 3 - k, c += 4 * k * i, j = c;
