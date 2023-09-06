@@ -91,8 +91,14 @@ static int64_t popcount(const byte_t *bytearray, int64_t size)
    else
       i = 0;
 
-   for (; i < size; i++)
+   // GCC 3.4 - 4.1 has broken 64-bit popcount.
+   for (; i < size; i++) {
+#if defined(__POPCNT__) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 1))
+      count += __builtin_popcountll(bytearray[i]);
+#else
       count += popcnt_byte[bytearray[i]];
+#endif
+   }
 
    return count;
 }
