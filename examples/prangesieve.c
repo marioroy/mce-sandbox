@@ -66,7 +66,7 @@ byte_t *makeprimes(uint64_t stop)
 
 void prangesieve(uint64_t start, uint64_t stop, int print_flag)
 {
-   // adjust start to a multiple of 6; then substract 6 and add 1
+   // adjust start to a multiple of 6; then subtract 6 and add 1
    uint64_t start_adj = (start > 5)
       ? start - (start % 6) - 6 + 1
       : 1;

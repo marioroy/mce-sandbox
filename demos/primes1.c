@@ -127,11 +127,11 @@ static const uint64_t LIMIT_MAX = 18446744073709551609UL; // 2^64-1-6
 
 void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
 {
-    // Adjust start to a multiple of 6, substract 6, and add 1.
+    // Adjust start to a multiple of 6, subtract 6, and add 1.
     //
-    // Corner case: We substract 6 regardless. For example:
+    // Corner case: We subtract 6 regardless. For example:
     // Segment (start = 102, stop = 140) prime start_adj = 103 is skipped
-    // unless substracting 6; start_adj = 97, n_off = start_adj - 1.
+    // unless subtracting 6; start_adj = 97, n_off = start_adj - 1.
     //
     // Index 0 is cleared, not used. Index 1 is cleared, outside segment.
     // { 0, 101, 103, 107, ..., n_off + 3i + 2, n_off + 3(i + 1) + 1, ..., N }

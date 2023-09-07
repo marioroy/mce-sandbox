@@ -113,7 +113,7 @@ def makeprimes(stop: u64) -> Ptr[u8]:
 
 def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
 
-    # adjust start to a multiple of 6; then substract 6 and add 1
+    # adjust start to a multiple of 6; then subtract 6 and add 1
     if start > u64(5):
         start_adj = start - (start % u64(6)) - u64(6) + u64(1)
     else:
