@@ -1,0 +1,81 @@
+##
+# UInt helper file for Codon.
+#     by Mario Roy, 2023-09-07
+#
+# Casting "int" often to UInt[N] makes programming in Codon less appealing.
+# The following snippet will not work unless casting 5, 6, and 1 to u64.
+#
+#     start = UInt[64](36900)
+#     if start > u64(5):
+#         start_adj = start - (start % u64(6)) - u64(6) + u64(1)
+#     else:
+#         start_adj = u64(1)
+#
+# This file enables UInt to cast "int" argument to "UInt[N]" automatically.
+#
+#     start = UInt[64](36900)
+#     if start > 5:
+#         start_adj = start - (start % 6) - 6 + 1
+#     else:
+#         start_adj = u64(1)
+##
+
+@extend
+class UInt:
+    def __add__(self, other: int) -> UInt[N]:
+        return self.__add__(UInt[N](other))
+
+    def __sub__(self, other: int) -> UInt[N]:
+        return self.__sub__(UInt[N](other))
+
+    def __mul__(self, other: int) -> UInt[N]:
+        return self.__mul__(UInt[N](other))
+
+    def __floordiv__(self, other: int) -> UInt[N]:
+        return self.__floordiv__(UInt[N](other))
+
+    def __truediv__(self, other: int) -> float:
+        return self.__truediv__(UInt[N](other))
+
+    def __mod__(self, other: int) -> UInt[N]:
+        return self.__mod__(UInt[N](other))
+
+    def __divmod__(self, other: int) -> Tuple[UInt[N], UInt[N]]:
+        return (self // UInt[N](other), self % UInt[N](other))
+
+    def __lshift__(self, other: int) -> UInt[N]:
+        return self.__lshift__(UInt[N](other))
+
+    def __rshift__(self, other: int) -> UInt[N]:
+        return self.__rshift__(UInt[N](other))
+
+    def __eq__(self, other: int) -> bool:
+        return self.__eq__(UInt[N](other))
+
+    def __ne__(self, other: int) -> bool:
+        return self.__ne__(UInt[N](other))
+
+    def __lt__(self, other: int) -> bool:
+        return self.__lt__(UInt[N](other))
+
+    def __gt__(self, other: int) -> bool:
+        return self.__gt__(UInt[N](other))
+
+    def __le__(self, other: int) -> bool:
+        return self.__le__(UInt[N](other))
+
+    def __ge__(self, other: int) -> bool:
+        return self.__ge__(UInt[N](other))
+
+    def __and__(self, other: int) -> UInt[N]:
+        return self.__and__(UInt[N](other))
+
+    def __or__(self, other: int) -> UInt[N]:
+        return self.__or__(UInt[N](other))
+
+    def __xor__(self, other: int) -> UInt[N]:
+        return self.__xor__(UInt[N](other))
+
+    def __pow__(self, other: int) -> UInt[N]:
+        return self.__pow__(UInt[N](other))
+

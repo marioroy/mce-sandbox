@@ -35,6 +35,7 @@ import math
 import openmp as omp
 from sys import argv, exit, stderr, stdout
 from time import time
+import intn_helper
 
 def strToBigInt(what: str) -> Int[1024]:
     # Convert a string to big Int, supporting scientific notation.
@@ -61,7 +62,7 @@ def strToUInt(what: str) -> u64:
     return n
 
 
-def popcount(s, size):
+def popcount(s, size) -> int:
     count, i = 0, 0
 
     if size == 0:
@@ -78,10 +79,10 @@ def popcount(s, size):
 
         for j in range(asize):
             b = a[j]
-            b =  b       - ((b >> u64(1))  & m1)
-            b = (b & m2) + ((b >> u64(2))  & m2)
-            b = (b       +  (b >> u64(4))) & m4
-            count += int((b * h01) >> u64(56))
+            b =  b       - ((b >> 1)  & m1)
+            b = (b & m2) + ((b >> 2)  & m2)
+            b = (b       +  (b >> 4)) & m4
+            count += int((b * h01) >> 56)
 
         i = asize * 8
 
@@ -93,15 +94,15 @@ def popcount(s, size):
 
 @inline
 def CLRBIT(s, i):
-    s[i >> 3] &= ~(u8(1) << (u8(i) & u8(7)))
+    s[i >> 3] &= ~(1 << (i & 7))
 
 @inline
 def GETBIT(s, i) -> u8:
-    return s[i >> 3] & u8(1 << (i & 7))
+    return s[i >> 3] & (1 << (i & 7))
 
 @inline
 def SETBIT(s, i):
-    s[i >> 3] |= u8(1 << (i & 7))
+    s[i >> 3] |= (1 << (i & 7))
 
 
 FLUSH_LIMIT: Static[int] = 65536 - 24
@@ -145,7 +146,7 @@ def printint(value, flush_only):
 
     # base10 to string conversion
     while True:
-        temp = value // u64(10)
+        temp = value // 10
         my.buf[s] = byte(int(u64(ord('0')) + value - u64(10) * temp))
         s += 1
         value = temp
@@ -168,16 +169,16 @@ def printint(value, flush_only):
 @omp.ordered
 def output_primes(s, start, low, high, M, n_off):
 
-    if start <= u64(2) and low <= u64(2) and high >= u64(2):
+    if start <= 2 and low <= 2 and high >= 2:
         printint(u64(2), 0)
-    if start <= u64(3) and low <= u64(3) and high >= u64(3):
+    if start <= 3 and low <= 3 and high >= 3:
         printint(u64(3), 0)
 
     for i in range(1, M + 1, 2):
         if (GETBIT(s, i)):
-            printint(n_off + u64(3 * i + 2), 0)
+            printint(n_off + (3 * i + 2), 0)
         if (GETBIT(s, i + 1)):
-            printint(n_off + u64(3 * (i + 1) + 1), 0)
+            printint(n_off + (3 * (i + 1) + 1), 0)
 
 
 # Step size is a multiple of 510510 or 9699690 for the pre-sieve logic.
@@ -198,12 +199,12 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
     # { 0, 101, 103, 107, ..., n_off + 3i + 2, n_off + 3(i + 1) + 1, ..., N }
     # { 0,   0, 103, 107, ..., n_off + 3i + 2, n_off + 3(i + 1) + 1, ..., N }
 
-    if start > u64(5):
-        start_adj = start - (start % u64(6)) - u64(6) + u64(1)
+    if start > 5:
+        start_adj = start - (start % 6) - 6 + 1
     else:
         start_adj = u64(1)
 
-    step_sz = 510510 * 12 if stop < u64(int(1e12)) else 9699690
+    step_sz = 510510 * 12 if stop < int(1e12) else 9699690
     if   stop >= strToUInt("1e+19"): step_sz *= 8
     elif stop >= strToUInt("1e+18"): step_sz *= 7
     elif stop >= strToUInt("1e+17"): step_sz *= 6
@@ -247,10 +248,10 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
     str.memset(pre_sieve.as_byte(), byte(0xff), mem_sz_p)
     CLRBIT(pre_sieve, 0)
 
-    c_off, j_off = 0, int((start_adj - u64(1)) // u64(3))
+    c_off, j_off = 0, int((start_adj - 1) // 3)
     c, k, t = 0, 1, 2
 
-    for i in range(1, (5 if stop < u64(int(1e12)) else 6) + 1):
+    for i in range(1, (5 if stop < int(1e12) else 6) + 1):
         k  = 3 - k; c += 4 * k * i; j = c
         ij = 2 * i * (3 - k) + 1; t += 4 * k
 
@@ -283,8 +284,8 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
     #    The thread processing the first chunk will undo this.
     #====================================================================
 
-    if start_adj == u64(1):
-        pre_sieve[0] = u8(0xc0) if stop < u64(int(1e12)) else u8(0x80)
+    if start_adj == 1:
+        pre_sieve[0] = u8(0xc0) if stop < int(1e12) else u8(0x80)
 
     # clear bits greater than "sieve_sz"
     i = mem_sz_p * 8 - (sieve_sz + 1)
@@ -292,22 +293,22 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
         CLRBIT(pre_sieve, mem_sz_p * 8 - i)
         i -= 1
 
-    num_chunks = int((stop - start_adj + u64(step_sz)) // u64(step_sz));
+    num_chunks = int((stop - start_adj + step_sz) // step_sz);
     count = 0
 
-    if start <= u64(2) and stop >= u64(2): count += 1
-    if start <= u64(3) and stop >= u64(3): count += 1
+    if start <= 2 and stop >= 2: count += 1
+    if start <= 3 and stop >= 3: count += 1
 
     @par(schedule='static', chunk_size=1, ordered=True)
     for chunk_id in range(num_chunks):
 
-        low = start_adj + u64(step_sz * chunk_id)
-        high = low + u64(step_sz) - u64(1)
+        low = start_adj + step_sz * chunk_id
+        high = low + step_sz - 1
 
         # Check also high < low in case addition overflowed.
         if high > stop or high < low: high = stop
 
-        if omp.get_thread_num() == 0 and stop > u64(2000000000) and not print_flag:
+        if omp.get_thread_num() == 0 and stop > 2000000000 and not print_flag:
             show_progress(start_adj, high, stop)
 
         #================================================================
@@ -315,10 +316,10 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
         #================================================================
 
         q = int(math.sqrt(float(high))) // 3
-        M = int((high - low + (high & u64(1))) // u64(3))
-        M2 = int(high // u64(3))
-        n_off = u64(low - u64(1))
-        j_off = int(n_off // u64(3))
+        M = int((high - low + (high & 1)) // 3)
+        M2 = int(high // 3)
+        n_off = low - 1
+        j_off = int(n_off // 3)
 
         mem_sz = (M + 2 + 7) // 8
         sieve = Ptr[u8](mem_sz)
@@ -326,12 +327,12 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
         # copy pre-sieved data into sieve
         # fix byte 0 if starting at 1 (has primes 5,7,11,13,17,19,23)
         str.memcpy(sieve.as_byte(), pre_sieve.as_byte(), mem_sz)
-        if low == u64(1): sieve[0] = u8(0xfe)
+        if low == 1: sieve[0] = u8(0xfe)
 
         # clear composites less than "start" value
-        if low == start_adj and n_off + u64((3 * 1 + 1) | 1) < start:
+        if low == start_adj and n_off + ((3 * 1 + 1) | 1) < start:
             CLRBIT(sieve, 1)
-            if n_off + u64((3 * 2 + 1) | 1) < start:
+            if n_off + ((3 * 2 + 1) | 1) < start:
                 CLRBIT(sieve, 2)
 
         # clear composites greater than "stop" value
@@ -340,21 +341,21 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
             while i:
                 CLRBIT(sieve, mem_sz * 8 - i)
                 i -= 1
-            if n_off + u64((3 * (M + 1) + 1) | 1) > stop:
+            if n_off + ((3 * (M + 1) + 1) | 1) > stop:
                 CLRBIT(sieve, M + 1)
-                if n_off + u64((3 * M + 1) | 1) > stop:
+                if n_off + ((3 * M + 1) | 1) > stop:
                     CLRBIT(sieve, M)
 
         j = 0; ij = 0;
 
-        if stop < u64(int(1e12)):
+        if stop < int(1e12):
           # sieving begins with 19 (i = 6)
             c = 96; k = 2; t = 34
         else:
           # sieving begins with 23 (i = 7)
             c = 120; k = 1; t = 38
 
-        for i in range((6 if stop < u64(int(1e12)) else 7), q + 1):
+        for i in range((6 if stop < int(1e12) else 7), q + 1):
             k  = 3 - k; c += 4 * k * i; j = c
             ij = 2 * i * (3 - k) + 1; t += 4 * k
 
@@ -413,7 +414,7 @@ def main():
         stop = strToUInt(argv[loff])
 
     # count primes between start and stop, inclusively
-    if start < u64(1) or stop < start:
+    if start < 1 or stop < start:
         print("Invalid integer or range.", file=stderr)
         exit(1)
     else:

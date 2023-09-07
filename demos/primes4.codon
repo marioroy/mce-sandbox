@@ -21,6 +21,7 @@
 #   OMP_NUM_THREADS=8 ./primes4 1e+16 1.00001e+16
 
 from internal.dlopen import dlext
+import intn_helper
 
 class StructPrimesieveIterator:
     i: u64
@@ -48,7 +49,7 @@ class PrimesieveIterator:
         primesieve_jump_to(self._it, start, stop)
 
     def next_prime(self) -> u64:
-        self._it.i += u64(1)
+        self._it.i += 1
         if self._it.i >= self._it.size:
             primesieve_generate_next_primes(self._it)
         return self._it.primes[int(self._it.i)]
@@ -125,7 +126,7 @@ def printint(value, flush_only):
 
     # base10 to string conversion
     while True:
-        temp = value // u64(10)
+        temp = value // 10
         my.buf[s] = byte(int(u64(ord('0')) + value - u64(10) * temp))
         s += 1
         value = temp
@@ -170,18 +171,18 @@ def primesieve(start: u64, stop: u64, print_flag: int) -> None:
     elif stop >= strToUInt("1e+13"): step_sz *= 2
     elif stop >= strToUInt("1e+12"): step_sz *= 1
 
-    num_chunks = int((stop - start + u64(step_sz)) // u64(step_sz));
+    num_chunks = int((stop - start + step_sz) // step_sz);
     count = 0
 
     @par(schedule='static', chunk_size=1, ordered=True)
     for chunk_id in range(num_chunks):
-        low = start + u64(step_sz * chunk_id)
-        high = low + u64(step_sz) - u64(1)
+        low = start + step_sz * chunk_id
+        high = low + step_sz - 1
 
         # Check also high < low in case addition overflowed.
         if high > stop or high < low: high = stop
 
-        if omp.get_thread_num() == 0 and stop > u64(2000000000) and not print_flag:
+        if omp.get_thread_num() == 0 and stop > 2000000000 and not print_flag:
             show_progress(start, high, stop)
 
         if print_flag:
@@ -194,13 +195,13 @@ def primesieve(start: u64, stop: u64, print_flag: int) -> None:
 # would generate a prime greater than 2^64 which primesieve doesn't support,
 # hence this causes an error."
 ##
-            if low <= u64(18446744073709551557) and high >= u64(18446744073709551557):
+            if low <= 18446744073709551557 and high >= 18446744073709551557:
                 include_last_prime = u64(18446744073709551557)
             else:
                 include_last_prime = u64(0)
 
-            if low  > u64(18446744073709551556): low  = u64(18446744073709551556)
-            if high > u64(18446744073709551556): high = u64(18446744073709551556)
+            if low  > 18446744073709551556: low  = u64(18446744073709551556)
+            if high > 18446744073709551556: high = u64(18446744073709551556)
 
             it = PrimesieveIterator(low, high)
 
@@ -243,7 +244,7 @@ def main():
         stop = strToUInt(argv[loff])
 
     # count primes between start and stop, inclusively
-    if start < u64(1) or stop < start:
+    if start < 1 or stop < start:
         print("Invalid integer or range.", file=stderr)
         exit(1)
     else:
