@@ -29,7 +29,8 @@ are required on the system.
        prangesieve.c      parallel rangesieve in C
        cpusieve.codon     parallel rangesieve in Codon (CPU)
        gpusieve.codon     parallel rangesieve in Codon (GPU)
-       pgpusieve.codon    using @par(gpu=True) syntax
+       pgpusieve.codon    using Codon @par(gpu=True) syntax
+       cudasieve.cu       using NVIDIA CUDA Toolkit
 
     lib/
        Sandbox.pm     Common code for the bin scripts.
