@@ -118,18 +118,16 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
          CLRBIT(sieve, M + (num_segments - 1) * 8);
    }
 
-   // create JJ, MM lists; clear one-byte padding between segments
-   int64_t *JJ = malloc(num_segments * sizeof(int64_t)); JJ[0] = 0;
+   // create MM list; clear one-byte padding between segments
    int64_t *MM = malloc(num_segments * sizeof(int64_t));
    int64_t off = 0;
 
    for (int64_t n = 0; n < num_segments - 1; n++) {
-      uint64_t low  = start_adj + (step_sz * n);
+      uint64_t low = start_adj + (step_sz * n);
       uint64_t high = low + step_sz - 1;
       if (high > stop || high < low) high = stop;
       int64_t m = high / 3;
-      JJ[n + 1] = m - j_off;
-      MM[n + 0] = m - j_off;
+      MM[n] = m - j_off;
       for (int i = 1; i <= 8; i++)
          CLRBIT(sieve, m - j_off + i + off);
       off += 8;
@@ -140,28 +138,36 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
 
    #pragma omp parallel for schedule(static, 1)
    for (int64_t n = 0; n < num_segments; n++) {
-      uint64_t low  = start_adj + (step_sz * n);
+
+      // account for one-byte padding between segments
+      int64_t s_off = j_off - n * 8, j_off2;
+      if (n == 0) {
+          j_off2 = j_off;
+      } else {
+          uint64_t low_ = start_adj + step_sz * (n - 1);
+          uint64_t high_ = low_ + step_sz - 1;
+          if (high_ > stop || high_ < low_) high_ = stop;
+          j_off2 = high_ / 3;
+      }
+
+      // sieve primes
+      uint64_t low = start_adj + (step_sz * n);
       uint64_t high = low + step_sz - 1;
       if (high > stop || high < low) high = stop;
 
       int64_t q = (int64_t) sqrt((double) high) / 3;
       int64_t m = high / 3;
       int64_t c = cc, k = kk, t = tt, j, ij;
-      int64_t j_off2 = JJ[n];
-
-      // account for one-byte padding (8 bits) between segments
-      // this guarantees that writes are safe between adjacent threads
-      int64_t s_off = j_off - n * 8;
 
       for (int64_t i = 1; i <= q; i++) {
-         k  = 3 - k, c += 4 * k * i, j = c;
+         k = 3 - k, c += 4 * k * i, j = c;
          ij = 2 * i * (3 - k) + 1, t += 4 * k;
          if (GETBIT(is_prime, i)) {
             // skip numbers before this segment
-            if (j < j_off + j_off2) {
-               j += (j_off + j_off2 - j) / t * t + ij;
+            if (j < j_off2) {
+               j += (j_off2 - j) / t * t + ij;
                ij = t - ij;
-               if (j < j_off + j_off2)
+               if (j < j_off2)
                   j += ij, ij = t - ij;
             }
             // clear composites
@@ -173,7 +179,6 @@ void prangesieve(uint64_t start, uint64_t stop, int print_flag)
       }
    }
 
-   free((void *) JJ); JJ = NULL;
    free((void *) is_prime); is_prime = NULL;
 
    if (start <= 2 && stop >= 2) count++;

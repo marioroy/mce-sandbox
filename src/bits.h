@@ -30,9 +30,8 @@ static const int unset_bit[8] = {
    (~(1 << 6) & 0xff), (~(1 << 7) & 0xff)
 };
 
-#define CLRBIT(s,i) s[(int64_t)(i) >> 3] &= unset_bit[(i) & 7]
-#define GETBIT(s,i) s[(int64_t)(i) >> 3] &  (1 << ((i) & 7))
-#define SETBIT(s,i) s[(int64_t)(i) >> 3] |= (1 << ((i) & 7))
+#define CLRBIT(s,i) s[(i) >> 3] &= unset_bit[(i) & 7]
+#define GETBIT(s,i) s[(i) >> 3] & (1 << ((i) & 7))
 
 // The popcount function is based on popcnt from Math::Prime::Util.
 

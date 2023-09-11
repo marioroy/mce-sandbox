@@ -96,10 +96,6 @@ def CLRBIT(s, i):
 def GETBIT(s, i) -> u8:
     return s[i >> 3] & (1 << (i & 7))
 
-@inline
-def SETBIT(s, i):
-    s[i >> 3] |= (1 << (i & 7))
-
 
 def makeprimes(stop: u64) -> List[u8]:
 
@@ -113,7 +109,7 @@ def makeprimes(stop: u64) -> List[u8]:
 
     # clear small composites <= q
     for i in range(1, q + 1):
-        k  = 3 - k; c += 4 * k * i; j = c
+        k = 3 - k; c += 4 * k * i; j = c
         ij = 2 * i * (3 - k) + 1; t += 4 * k
         if GETBIT(array, i):
             while j <= q:
@@ -124,33 +120,39 @@ def makeprimes(stop: u64) -> List[u8]:
 
 
 @gpu.kernel
-def gpusieve(sieve, is_prime, jj, step_sz, num_segments, start_adj, stop, j_off):
+def gpusieve(sieve, is_prime, step_sz, num_segments, start_adj, stop, j_off):
 
     n = (gpu.block.x * gpu.block.dim.x) + gpu.thread.x
     if n >= num_segments: return
 
-    low  = start_adj + step_sz * n
+    # account for one-byte padding between segments
+    s_off = j_off - n * 8
+    if n == 0:
+        j_off2 = j_off
+    else:
+        low_ = start_adj + step_sz * (n - 1)
+        high_ = low_ + step_sz - 1
+        if high_ > stop or high_ < low_: high_ = stop
+        j_off2 = int(high_ // 3)
+
+    # sieve primes
+    low = start_adj + step_sz * n
     high = low + step_sz - 1
     if high > stop or high < low: high = stop
 
     q = int(math.sqrt(float(high))) // 3
     m = int(high // 3)
     c, k, t, j, ij = 0, 1, 2, 0, 0
-    j_off2 = jj[n]
-
-    # account for one-byte padding (8 bits) between segments
-    # this guarantees that writes are safe between adjacent threads
-    s_off = j_off - n * 8
 
     for i in range(1, q + 1):
-        k  = 3 - k; c += 4 * k * i; j = c
+        k = 3 - k; c += 4 * k * i; j = c
         ij = 2 * i * (3 - k) + 1; t += 4 * k
         if GETBIT(is_prime, i):
             # skip numbers before this segment
-            if j < j_off + j_off2:
-                j += (j_off + j_off2 - j) // t * t + ij
+            if j < j_off2:
+                j += (j_off2 - j) // t * t + ij
                 ij = t - ij
-                if (j < j_off + j_off2):
+                if (j < j_off2):
                     j += ij; ij = t - ij
             # clear composites
             while j <= m:
@@ -213,17 +215,15 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
         if n_off + ((3 * M + 1) | 1) > stop:
             CLRBIT(sieve, M + (num_segments - 1) * 8)
 
-    # create JJ, MM lists; clear one-byte padding between segments
-    JJ = list[int](); JJ.append(0)
+    # create MM list; clear one-byte padding between segments
     MM = list[int]()
     off = 0
 
     for n in range(num_segments - 1):
-        low  = start_adj + step_sz * n
+        low = start_adj + step_sz * n
         high = low + step_sz - 1
         if high > stop or high < low: high = stop
         m = int(high // 3)
-        JJ.append(m - j_off)
         MM.append(m - j_off)
         for i in range(1, 8 + 1):
             CLRBIT(sieve, m - j_off + i + off)
@@ -232,7 +232,7 @@ def prangesieve(start: u64, stop: u64, print_flag: int) -> None:
     MM.append(M + 2)
     gsize = num_segments // bsize + (1 if num_segments % bsize else 0)
 
-    gpusieve( gpu.Pointer(sieve, mem_sz), gpu.raw(is_prime), gpu.raw(JJ),
+    gpusieve( gpu.Pointer(sieve, mem_sz), gpu.raw(is_prime),
         step_sz, num_segments, start_adj, stop, j_off,
         grid=gsize, block=bsize )
 

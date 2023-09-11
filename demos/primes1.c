@@ -165,7 +165,7 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
 
     // clear small composites <= q
     for (int64_t i = 1; i <= q; i++) {
-        k  = 3 - k, c += 4 * k * i, j = c;
+        k = 3 - k, c += 4 * k * i, j = c;
         ij = 2 * i * (3 - k) + 1, t += 4 * k;
         if (GETBIT(is_prime, i)) {
             while (j <= q) {
@@ -192,7 +192,7 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
     c = 0, k = 1, t = 2;
 
     for (int64_t i = 1; i <= (stop < 1e12 ? 5 : 6); i++) {
-        k  = 3 - k, c += 4 * k * i, j = c;
+        k = 3 - k, c += 4 * k * i, j = c;
         ij = 2 * i * (3 - k) + 1, t += 4 * k;
 
         // skip numbers before start_adj
@@ -305,7 +305,7 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
         }
 
         for (int64_t i = (stop < 1e12 ? 6 : 7); i <= q; i++) {
-            k  = 3 - k, c += 4 * k * i, j = c;
+            k = 3 - k, c += 4 * k * i, j = c;
             ij = 2 * i * (3 - k) + 1, t += 4 * k;
 
             if (GETBIT(is_prime, i)) {

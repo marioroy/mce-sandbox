@@ -111,7 +111,7 @@ void rangesieve(uint64_t start, uint64_t stop, int print_flag)
    //=========================================================================
    if (stop < 1e15) {
       int64_t num_segments = (stop - start_adj + SEGMENT_SIZE) / SEGMENT_SIZE;
-      int64_t cc = c, kk = k, tt = t, j_off2 = 0;
+      int64_t cc = c, kk = k, tt = t, j_off2 = j_off;
 
       for (int64_t n = 0; n < num_segments; n++) {
          uint64_t low = start_adj + (SEGMENT_SIZE * n);
@@ -125,14 +125,14 @@ void rangesieve(uint64_t start, uint64_t stop, int print_flag)
 
          c = cc, k = kk, t = tt;
          for (i = 1; i <= q; i++) {
-            k  = 3 - k, c += 4 * k * i, j = c;
+            k = 3 - k, c += 4 * k * i, j = c;
             ij = 2 * i * (3 - k) + 1, t += 4 * k;
             if (GETBIT(is_prime, i)) {
                // skip numbers before this segment
-               if (j < j_off + j_off2) {
-                  j += (j_off + j_off2 - j) / t * t + ij;
+               if (j < j_off2) {
+                  j += (j_off2 - j) / t * t + ij;
                   ij = t - ij;
-                  if (j < j_off + j_off2)
+                  if (j < j_off2)
                      j += ij, ij = t - ij;
                }
                // clear composites
@@ -143,7 +143,7 @@ void rangesieve(uint64_t start, uint64_t stop, int print_flag)
             }
          }
 
-         j_off2 = m - j_off;
+         j_off2 = m;
       }
    }
 

@@ -72,7 +72,7 @@ void segmentsieve(uint64_t stop)
       c = cc, k = kk, t = tt;
 
       for (i = 1; i <= q; i++) {
-         k  = 3 - k, c += 4 * k * i, j = c;
+         k = 3 - k, c += 4 * k * i, j = c;
          ij = 2 * i * (3 - k) + 1, t += 4 * k;
          if (GETBIT(sieve, i)) {
             // skip numbers before this segment

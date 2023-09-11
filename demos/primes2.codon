@@ -100,10 +100,6 @@ def CLRBIT(s, i):
 def GETBIT(s, i) -> u8:
     return s[i >> 3] & (1 << (i & 7))
 
-@inline
-def SETBIT(s, i):
-    s[i >> 3] |= (1 << (i & 7))
-
 
 FLUSH_LIMIT: Static[int] = 65536 - 24
 
@@ -228,7 +224,7 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
 
     # clear small composites <= q
     for i in range(1, q + 1):
-        k  = 3 - k; c += 4 * k * i; j = c
+        k = 3 - k; c += 4 * k * i; j = c
         ij = 2 * i * (3 - k) + 1; t += 4 * k
         if GETBIT(is_prime, i):
             while j <= q:
@@ -252,7 +248,7 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
     c, k, t = 0, 1, 2
 
     for i in range(1, (5 if stop < int(1e12) else 6) + 1):
-        k  = 3 - k; c += 4 * k * i; j = c
+        k = 3 - k; c += 4 * k * i; j = c
         ij = 2 * i * (3 - k) + 1; t += 4 * k
 
         # skip numbers before start_adj
@@ -356,7 +352,7 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
             c = 120; k = 1; t = 38
 
         for i in range((6 if stop < int(1e12) else 7), q + 1):
-            k  = 3 - k; c += 4 * k * i; j = c
+            k = 3 - k; c += 4 * k * i; j = c
             ij = 2 * i * (3 - k) + 1; t += 4 * k
 
             if GETBIT(is_prime, i):
