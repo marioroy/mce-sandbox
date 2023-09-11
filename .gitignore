@@ -22,6 +22,8 @@ _Inline
 *.exe
 *.ptx
 
+build.sh
+
 # Demos
 primes1
 primes2
