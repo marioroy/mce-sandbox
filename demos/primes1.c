@@ -343,7 +343,7 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
     if (print_flag)
         printint(0UL,1);  // flush buffer only
     else
-        fprintf(stderr, "\rPrimes found: %lld\n", count);
+        fprintf(stderr, "\rPrimes found: %ld\n", count);
 
     free((void *) pre_sieve);
     pre_sieve = NULL;
@@ -366,7 +366,7 @@ int main(int argc, char** argv)
     if (argc > 2) {
         loff = 2;
         if (strlen(argv[1]) > 20 || strtold(argv[1], NULL) > LIMIT_MAX) {
-            fprintf(stderr, "Start exceeds %llu 2^64-1-6.\n", LIMIT_MAX);
+            fprintf(stderr, "Start exceeds %lu 2^64-1-6.\n", LIMIT_MAX);
             return 1;
         }
         start = (uint64_t) strtold(argv[1], NULL);
@@ -378,7 +378,7 @@ int main(int argc, char** argv)
     // check for start of range or limit
     if (loff > 0) {
         if (strlen(argv[loff]) > 20 || strtold(argv[loff], NULL) > LIMIT_MAX) {
-            fprintf(stderr, "Limit exceeds %llu 2^64-1-6.\n", LIMIT_MAX);
+            fprintf(stderr, "Limit exceeds %lu 2^64-1-6.\n", LIMIT_MAX);
             return 1;
         }
         stop = (uint64_t) strtold(argv[loff], NULL);
