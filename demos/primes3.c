@@ -109,8 +109,7 @@ void primesieve(uint64_t start, uint64_t stop, int print_flag)
     int64_t num_chunks = (stop - start + step_sz) / step_sz;
     int64_t count = 0;
 
-    #pragma omp parallel for ordered schedule(static, 1) \
-        firstprivate(unset_bit) reduction(+:count)
+    #pragma omp parallel for ordered schedule(static, 1) reduction(+:count)
     for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++)
     {
         uint64_t low = start + (step_sz * chunk_id);
