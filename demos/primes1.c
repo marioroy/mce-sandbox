@@ -243,7 +243,8 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
     if (start <= 2 && stop >= 2) count++;
     if (start <= 3 && stop >= 3) count++;
 
-    #pragma omp parallel for ordered schedule(static, 1) reduction(+:count)
+    #pragma omp parallel for ordered schedule(static, 1) \
+        firstprivate(unset_bit) reduction(+:count)
     for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++)
     {
         uint64_t low = start_adj + (step_sz * chunk_id);
