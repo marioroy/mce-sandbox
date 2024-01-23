@@ -20,7 +20,7 @@ are required on the system.
        primes1.c      Algorithm3 in C with OpenMP directives.
        primes2.codon  Algorithm3 in Codon, a Python-like language.
        primes3.c      Using libprimesieve C API in C.
-       primes4.codon  Using libprimesieve C API in Codon
+       primes4.codon  Using libprimesieve C API in Codon.
 
     examples/         Progressive demonstrations.
        practicalsieve.c   single big loop
