@@ -174,27 +174,32 @@ def primesieve(start: u64, stop: u64, print_flag: int) -> None:
     num_chunks = int((stop - start + step_sz) // step_sz);
     count = 0
 
-    @par(schedule='static', chunk_size=1, ordered=True)
-    for chunk_id in range(num_chunks):
-        low = start + step_sz * chunk_id
-        high = low + step_sz - 1
+    # OpenMP lib does not provide a way to specify "ordered" dynamically.
+    # Ordered is needed only when "print_flag" is a true value.
+    # So two separate for loops, to not experience "ordered" overhead
+    # just counting primes.
 
-        # Check also high < low in case addition overflowed.
-        if high > stop or high < low: high = stop
+    if print_flag:
+        @par(schedule='static', chunk_size=1, ordered=True)
+        for chunk_id in range(num_chunks):
+            low = start + step_sz * chunk_id
+            high = low + step_sz - 1
 
-        if omp.get_thread_num() == 0 and stop > 2000000000 and not print_flag:
-            show_progress(start, high, stop)
+            # Check also high < low in case addition overflowed.
+            if high > stop or high < low: high = stop
 
-        if print_flag:
-##
-# Error: "primesieve_iterator: cannot generate primes > 2^64"
-# https://github.com/kimwalisch/primesieve/issues/138
-# Reduce start/stop values, but not forget the last unsigned 64-bit prime.
-#
-# Why it happens? "Calling primesieve_next_prime() after 18446744073709551557
-# would generate a prime greater than 2^64 which primesieve doesn't support,
-# hence this causes an error."
-##
+            if omp.get_thread_num() == 0 and stop > 2000000000 and not print_flag:
+                show_progress(start, high, stop)
+
+            # Reduce start/stop values, but not forget the last unsigned 64-bit prime.
+            #
+            # Error: "primesieve_iterator: cannot generate primes > 2^64"
+            # https://github.com/kimwalisch/primesieve/issues/138
+            #
+            # Why it happens? "Calling primesieve_next_prime() after 18446744073709551557
+            # would generate a prime greater than 2^64 which primesieve doesn't support,
+            # hence this causes an error."
+
             if low <= 18446744073709551557 and high >= 18446744073709551557:
                 include_last_prime = u64(18446744073709551557)
             else:
@@ -208,7 +213,18 @@ def primesieve(start: u64, stop: u64, print_flag: int) -> None:
             display_primes(it, high)
             if include_last_prime:
                 printint(include_last_prime, 0)
-        else:
+    else:
+        @par(schedule='static', chunk_size=1, ordered=False)
+        for chunk_id in range(num_chunks):
+            low = start + step_sz * chunk_id
+            high = low + step_sz - 1
+
+            # Check also high < low in case addition overflowed.
+            if high > stop or high < low: high = stop
+
+            if omp.get_thread_num() == 0 and stop > 2000000000 and not print_flag:
+                show_progress(start, high, stop)
+
             count += int(primesieve_count_primes(low, high))
 
     if print_flag:
