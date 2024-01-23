@@ -1,4 +1,4 @@
-## Sandboxing with Perl + MCE + Inline::C and Codon
+## Sandboxing with Perl MCE/Inline::C, C/OpenMP, and Codon
 
 A journey with Perl, MCE, Inline::C (and more) to count, sum, and generate prime numbers.
 
@@ -19,7 +19,7 @@ are required on the system.
     demos/
        primes1.c      Algorithm3 in C with OpenMP directives.
        primes2.codon  Algorithm3 in Codon, a Python-like language.
-       primes3.c      Using libprimesieve C API in C
+       primes3.c      Using libprimesieve C API in C.
        primes4.codon  Using libprimesieve C API in Codon
 
     examples/         Progressive demonstrations.
