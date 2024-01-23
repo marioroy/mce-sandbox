@@ -22,23 +22,17 @@ _Inline
 *.exe
 *.ptx
 
-# Demos - using CLANG, GCC, or NVIDIA NVC
+# Demos - using CLANG, GCC, NVIDIA NVC, or Codon
 primes1
 primes1.clang
 primes1.gcc
 primes1.nvc
 primes2
-primes2.clang
-primes2.gcc
-primes2.nvc
 primes3
 primes3.clang
 primes3.gcc
 primes3.nvc
 primes4
-primes4.clang
-primes4.gcc
-primes4.nvc
 
 # Examples
 practicalsieve
