@@ -109,28 +109,32 @@ void primesieve(uint64_t start, uint64_t stop, int print_flag)
     int64_t num_chunks = (stop - start + step_sz) / step_sz;
     int64_t count = 0;
 
-    #pragma omp parallel for ordered schedule(static, 1) reduction(+:count)
-    for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++)
-    {
-        uint64_t low = start + (step_sz * chunk_id);
-        uint64_t high = low + step_sz - 1;
+    // OpenMP does not provide a way to specify "ordered" dynamically.
+    // Ordered is needed only when "print_flag" is a true value.
+    // So two separate for loops, to not experience "ordered" overhead
+    // just counting primes.
 
-        // Check also high < low in case addition overflowed.
-        if (high > stop || high < low) high = stop;
+    if (print_flag) {
+        #pragma omp parallel for ordered schedule(static, 1)
+        for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++) {
+            uint64_t low = start + (step_sz * chunk_id);
+            uint64_t high = low + step_sz - 1;
 
-        if (omp_get_thread_num() == 0 && stop > 2000000000L && !print_flag)
-            show_progress(start, high, stop);
+            // Check also high < low in case addition overflowed.
+            if (high > stop || high < low) high = stop;
 
-        if (print_flag) {
-///
-// Error: "primesieve_iterator: cannot generate primes > 2^64"
-// https://github.com/kimwalisch/primesieve/issues/138
-// Reduce start/stop values, but not forget the last unsigned 64-bit prime.
-//
-// Why it happens? "Calling primesieve_next_prime() after 18446744073709551557
-// would generate a prime greater than 2^64 which primesieve doesn't support,
-// hence this causes an error."
-///
+            if (omp_get_thread_num() == 0 && stop > 2000000000L && !print_flag)
+                show_progress(start, high, stop);
+
+            // Reduce start/stop values, but not forget the last unsigned 64-bit prime.
+            //
+            // Error: "primesieve_iterator: cannot generate primes > 2^64"
+            // https://github.com/kimwalisch/primesieve/issues/138
+            //
+            // Why it happens? "Calling primesieve_next_prime() after 18446744073709551557
+            // would generate a prime greater than 2^64 which primesieve doesn't support,
+            // hence this causes an error."
+
             uint64_t include_last_prime;
             if (low <= 18446744073709551557UL && high >= 18446744073709551557UL)
                 include_last_prime = 18446744073709551557UL;
@@ -154,7 +158,19 @@ void primesieve(uint64_t start, uint64_t stop, int print_flag)
             if (include_last_prime)
                 printint(include_last_prime, 0);
         }
-        else {
+    }
+    else {
+        #pragma omp parallel for reduction(+:count) schedule(static, 1)
+        for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++) {
+            uint64_t low = start + (step_sz * chunk_id);
+            uint64_t high = low + step_sz - 1;
+
+            // Check also high < low in case addition overflowed.
+            if (high > stop || high < low) high = stop;
+
+            if (omp_get_thread_num() == 0 && stop > 2000000000L && !print_flag)
+                show_progress(start, high, stop);
+
             count += primesieve_count_primes(low, high);
         }
     }

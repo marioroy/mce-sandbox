@@ -243,102 +243,195 @@ void practicalsieve(uint64_t start, uint64_t stop, int print_flag)
     if (start <= 2 && stop >= 2) count++;
     if (start <= 3 && stop >= 3) count++;
 
-    #pragma omp parallel for ordered schedule(static, 1) \
-        firstprivate(unset_bit) reduction(+:count)
-    for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++)
-    {
-        uint64_t low = start_adj + (step_sz * chunk_id);
-        uint64_t high = low + step_sz - 1;
+    // OpenMP does not provide a way to specify "ordered" dynamically.
+    // Ordered is needed only when "print_flag" is a true value.
+    // So two separate for loops, to not experience "ordered" overhead
+    // just counting primes.
 
-        // Check also high < low in case addition overflowed.
-        if (high > stop || high < low) high = stop;
+    if (print_flag) {
+        #pragma omp parallel for ordered \
+            firstprivate(unset_bit) schedule(static, 1)
+        for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++) {
+            uint64_t low = start_adj + (step_sz * chunk_id);
+            uint64_t high = low + step_sz - 1;
 
-        if (omp_get_thread_num() == 0 && stop > 2000000000L && !print_flag)
-            show_progress(start_adj, high, stop);
+            // Check also high < low in case addition overflowed.
+            if (high > stop || high < low) high = stop;
 
-        //===============================================================
-        // Practical sieve algorithm.
-        //===============================================================
+            if (omp_get_thread_num() == 0 && stop > 2000000000L && !print_flag)
+                show_progress(start_adj, high, stop);
 
-        int64_t q = (int64_t) sqrt((double) high) / 3;
-        int64_t M = (high - low + (high & 1)) / 3;
-        int64_t M2 = high / 3;
-        uint64_t n_off = low - 1;
-        int64_t j_off = n_off / 3;
+            //===============================================================
+            // Practical sieve algorithm.
+            //===============================================================
 
-        int64_t mem_sz = (M + 2 + 7) / 8;
-        byte_t *sieve = (byte_t *) malloc(mem_sz);
+            int64_t q = (int64_t) sqrt((double) high) / 3;
+            int64_t M = (high - low + (high & 1)) / 3;
+            int64_t M2 = high / 3;
+            uint64_t n_off = low - 1;
+            int64_t j_off = n_off / 3;
 
-        // copy pre-sieved data into sieve
-        // fix byte 0 if starting at 1 (has primes 5,7,11,13,17,19,23)
-        memcpy(sieve, pre_sieve, mem_sz);
-        if (low == 1) sieve[0] = 0xfe;
+            int64_t mem_sz = (M + 2 + 7) / 8;
+            byte_t *sieve = (byte_t *) malloc(mem_sz);
 
-        // clear composites less than "start" value
-        if (low == start_adj && n_off + ((3 * 1 + 1) | 1) < start) {
-            CLRBIT(sieve, 1);
-            if (n_off + ((3 * 2 + 1) | 1) < start)
-                CLRBIT(sieve, 2);
-        }
+            // copy pre-sieved data into sieve
+            // fix byte 0 if starting at 1 (has primes 5,7,11,13,17,19,23)
+            memcpy(sieve, pre_sieve, mem_sz);
+            if (low == 1) sieve[0] = 0xfe;
 
-        // clear composites greater than "stop" value
-        if (high == stop) {
-            int64_t i = mem_sz * 8 - (M + 2);
-            while (i) {
-                CLRBIT(sieve, mem_sz * 8 - i);
-                i--;
+            // clear composites less than "start" value
+            if (low == start_adj && n_off + ((3 * 1 + 1) | 1) < start) {
+                CLRBIT(sieve, 1);
+                if (n_off + ((3 * 2 + 1) | 1) < start)
+                    CLRBIT(sieve, 2);
             }
-            if (n_off + ((3 * (M + 1) + 1) | 1) > stop) {
-                CLRBIT(sieve, M + 1);
-                if (n_off + ((3 * M + 1) | 1) > stop)
-                    CLRBIT(sieve, M);
+
+            // clear composites greater than "stop" value
+            if (high == stop) {
+                int64_t i = mem_sz * 8 - (M + 2);
+                while (i) {
+                    CLRBIT(sieve, mem_sz * 8 - i);
+                    i--;
+                }
+                if (n_off + ((3 * (M + 1) + 1) | 1) > stop) {
+                    CLRBIT(sieve, M + 1);
+                    if (n_off + ((3 * M + 1) | 1) > stop)
+                        CLRBIT(sieve, M);
+                }
             }
-        }
 
-        int64_t c, k, t, j, ij;
+            int64_t c, k, t, j, ij;
 
-        if (stop < 1e12) {
-         // sieving begins with 19 (i = 6)
-            c = 96, k = 2, t = 34;
-        } else {
-         // sieving begins with 23 (i = 7)
-            c = 120, k = 1, t = 38;
-        }
+            if (stop < 1e12) {
+                // sieving begins with 19 (i = 6)
+                c = 96, k = 2, t = 34;
+            } else {
+                // sieving begins with 23 (i = 7)
+                c = 120, k = 1, t = 38;
+            }
 
-        for (int64_t i = (stop < 1e12 ? 6 : 7); i <= q; i++) {
-            k = 3 - k, c += 4 * k * i, j = c;
-            ij = 2 * i * (3 - k) + 1, t += 4 * k;
+            for (int64_t i = (stop < 1e12 ? 6 : 7); i <= q; i++) {
+                k = 3 - k, c += 4 * k * i, j = c;
+                ij = 2 * i * (3 - k) + 1, t += 4 * k;
 
-            if (GETBIT(is_prime, i)) {
-                // skip numbers before this block
-                if (j < j_off) {
-                    j += (j_off - j) / t * t + ij;
-                    ij = t - ij;
-                    if (j < j_off)
+                if (GETBIT(is_prime, i)) {
+                    // skip numbers before this block
+                    if (j < j_off) {
+                        j += (j_off - j) / t * t + ij;
+                        ij = t - ij;
+                        if (j < j_off)
+                            j += ij, ij = t - ij;
+                    }
+                    // clear composites
+                    while (j <= M2) {
+                        CLRBIT(sieve, j - j_off);
                         j += ij, ij = t - ij;
-                }
-                // clear composites
-                while (j <= M2) {
-                    CLRBIT(sieve, j - j_off);
-                    j += ij, ij = t - ij;
+                    }
                 }
             }
-        }
 
-        //===============================================================
-        // Output or count primes found.
-        //===============================================================
+            //===============================================================
+            // Output primes found.
+            //===============================================================
 
-        if (print_flag) {
             #pragma omp ordered
             output_primes(sieve, start, low, high, M, n_off);
-        }
-        else {
-            count += popcount(sieve, mem_sz);
-        }
 
-        free((void *) sieve);
-        sieve = NULL;
+            free((void *) sieve);
+            sieve = NULL;
+        }
+    }
+    else {
+        #pragma omp parallel for reduction(+:count) \
+            firstprivate(unset_bit) schedule(static, 1)
+        for (int64_t chunk_id = 0; chunk_id < num_chunks; chunk_id++) {
+            uint64_t low = start_adj + (step_sz * chunk_id);
+            uint64_t high = low + step_sz - 1;
+
+            // Check also high < low in case addition overflowed.
+            if (high > stop || high < low) high = stop;
+
+            if (omp_get_thread_num() == 0 && stop > 2000000000L && !print_flag)
+                show_progress(start_adj, high, stop);
+
+            //===============================================================
+            // Practical sieve algorithm.
+            //===============================================================
+
+            int64_t q = (int64_t) sqrt((double) high) / 3;
+            int64_t M = (high - low + (high & 1)) / 3;
+            int64_t M2 = high / 3;
+            uint64_t n_off = low - 1;
+            int64_t j_off = n_off / 3;
+
+            int64_t mem_sz = (M + 2 + 7) / 8;
+            byte_t *sieve = (byte_t *) malloc(mem_sz);
+
+            // copy pre-sieved data into sieve
+            // fix byte 0 if starting at 1 (has primes 5,7,11,13,17,19,23)
+            memcpy(sieve, pre_sieve, mem_sz);
+            if (low == 1) sieve[0] = 0xfe;
+
+            // clear composites less than "start" value
+            if (low == start_adj && n_off + ((3 * 1 + 1) | 1) < start) {
+                CLRBIT(sieve, 1);
+                if (n_off + ((3 * 2 + 1) | 1) < start)
+                    CLRBIT(sieve, 2);
+            }
+
+            // clear composites greater than "stop" value
+            if (high == stop) {
+                int64_t i = mem_sz * 8 - (M + 2);
+                while (i) {
+                    CLRBIT(sieve, mem_sz * 8 - i);
+                    i--;
+                }
+                if (n_off + ((3 * (M + 1) + 1) | 1) > stop) {
+                    CLRBIT(sieve, M + 1);
+                    if (n_off + ((3 * M + 1) | 1) > stop)
+                        CLRBIT(sieve, M);
+                }
+            }
+
+            int64_t c, k, t, j, ij;
+
+            if (stop < 1e12) {
+                // sieving begins with 19 (i = 6)
+                c = 96, k = 2, t = 34;
+            } else {
+                // sieving begins with 23 (i = 7)
+                c = 120, k = 1, t = 38;
+            }
+
+            for (int64_t i = (stop < 1e12 ? 6 : 7); i <= q; i++) {
+                k = 3 - k, c += 4 * k * i, j = c;
+                ij = 2 * i * (3 - k) + 1, t += 4 * k;
+
+                if (GETBIT(is_prime, i)) {
+                    // skip numbers before this block
+                    if (j < j_off) {
+                        j += (j_off - j) / t * t + ij;
+                        ij = t - ij;
+                        if (j < j_off)
+                            j += ij, ij = t - ij;
+                    }
+                    // clear composites
+                    while (j <= M2) {
+                        CLRBIT(sieve, j - j_off);
+                        j += ij, ij = t - ij;
+                    }
+                }
+            }
+
+            //===============================================================
+            // Count (tally) primes found.
+            //===============================================================
+
+            count += popcount(sieve, mem_sz);
+
+            free((void *) sieve);
+            sieve = NULL;
+        }
     }
 
     if (print_flag)
