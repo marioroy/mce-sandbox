@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.893';
+our $VERSION = '1.894';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -645,7 +645,7 @@ sub spawn {
    # silently clobbers Perl's srand function, and does not seed Perl's
    # pseudo-random generator. https://perlmonks.org/?node_id=11159773
 
-   if ( $INC{'PDL/Primitive.pm'} && PDL::Primitive->can('srand') ) {
+   if ( $INC{'PDL/Primitive.pm'} ) {
       # Call PDL's random() function if exported i.e. use PDL.
 
       my $caller = caller(); local $@;

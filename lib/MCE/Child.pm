@@ -11,7 +11,7 @@ no warnings qw( threads recursion uninitialized once redefine );
 
 package MCE::Child;
 
-our $VERSION = '1.893';
+our $VERSION = '1.894';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
@@ -115,7 +115,7 @@ sub init {
       # silently clobbers Perl's srand function, and does not seed Perl's
       # pseudo-random generator. https://perlmonks.org/?node_id=11159773
 
-      if ( $INC{'PDL/Primitive.pm'} && PDL::Primitive->can('srand') ) {
+      if ( $INC{'PDL/Primitive.pm'} ) {
          # Call PDL's random() function if exported i.e. use PDL.
 
          my $caller = caller(); local $@;
@@ -1020,7 +1020,7 @@ MCE::Child - A threads-like parallelization module compatible with Perl 5.8
 
 =head1 VERSION
 
-This document describes MCE::Child version 1.893
+This document describes MCE::Child version 1.894
 
 =head1 SYNOPSIS
 
