@@ -11,7 +11,7 @@ no warnings qw( threads recursion uninitialized once redefine );
 
 package MCE::Child;
 
-our $VERSION = '1.897';
+our $VERSION = '1.900';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
@@ -107,9 +107,9 @@ sub init {
    $mngd->{MGR_ID} = "$$.$_tid", $mngd->{PKG} = $pkg,
    $mngd->{WRK_ID} =  $$;
 
-   &_force_reap($pkg), $_DATA->{$pkg}->clear() if ( exists $_LIST->{$pkg} );
+   &_force_reap($pkg), $_DATA->{$pkg}->clear() if ( defined $_LIST->{$pkg} );
 
-   if ( !exists $_LIST->{$pkg} ) {
+   if ( !defined $_LIST->{$pkg} ) {
       $MCE::_GMUTEX->lock() if ( $_tid && $MCE::_GMUTEX );
       sleep 0.015 if $_tid;
 
@@ -203,7 +203,7 @@ sub create {
    $_DATA->{"$pkg:id"} = 10000 if ( ( my $id = ++$_DATA->{"$pkg:id"} ) >= 2e9 );
 
    # Reap completed child processes.
-   if ( $self->{IGNORE} || ($max_workers && $list->len() >= $max_workers) ) {
+   {
       local ($SIG{CHLD}, $!, $?, $_);
       map {
          $_ = substr($_, 1); # strip leading 'R'
@@ -339,7 +339,7 @@ sub exit {
 
    return $self if $self->{REAPED};
 
-   if ( exists $_DATA->{$pkg} ) {
+   if ( defined $_DATA->{$pkg} ) {
       sleep $_yield_secs until $_DATA->{$pkg}->exists('S'.$wrk_id);
    } else {
       sleep 0.030;
@@ -363,7 +363,7 @@ sub finish {
    if ( $pkg eq 'MCE' ) {
       for my $key ( keys %{ $_LIST } ) { MCE::Child->finish($key); }
    }
-   elsif ( exists $_LIST->{$pkg} ) {
+   elsif ( defined $_LIST->{$pkg} ) {
       return if $MCE::Signal::KILLED;
 
       if ( exists $_DELY->{$pkg} ) {
@@ -427,7 +427,7 @@ sub join {
 
    if ( $self->{REAPED} ) {
       _croak('Child already joined') unless exists( $self->{RESULT} );
-      $_LIST->{$pkg}->del($wrk_id) if ( exists $_LIST->{$pkg} );
+      $_LIST->{$pkg}->del($wrk_id) if ( defined $_LIST->{$pkg} );
 
       return ( defined wantarray )
          ? wantarray ? @{ delete $self->{RESULT} } : delete( $self->{RESULT} )->[-1]
@@ -465,7 +465,7 @@ sub kill {
    }
    if ( $self->{MGR_ID} eq "$$.$_tid" ) {
       return $self if $self->{REAPED};
-      if ( exists $_DATA->{$pkg} ) {
+      if ( defined $_DATA->{$pkg} ) {
          sleep $_yield_secs until $_DATA->{$pkg}->exists('S'.$wrk_id);
       } else {
          sleep 0.030;
@@ -481,14 +481,14 @@ sub list {
    _croak('Usage: MCE::Child->list()') if ref($_[0]);
    my $pkg = "$$.$_tid.".caller();
 
-   ( exists $_LIST->{$pkg} ) ? $_LIST->{$pkg}->vals() : ();
+   ( defined $_LIST->{$pkg} ) ? $_LIST->{$pkg}->vals() : ();
 }
 
 sub list_pids {
    _croak('Usage: MCE::Child->list_pids()') if ref($_[0]);
    my $pkg = "$$.$_tid.".caller(); local $_;
 
-   ( exists $_LIST->{$pkg} ) ? map { $_->pid } $_LIST->{$pkg}->vals() : ();
+   ( defined $_LIST->{$pkg} ) ? map { $_->pid } $_LIST->{$pkg}->vals() : ();
 }
 
 sub list_joinable {
@@ -539,7 +539,7 @@ sub pending {
    _croak('Usage: MCE::Child->pending()') if ref($_[0]);
    my $pkg = "$$.$_tid.".caller();
 
-   ( exists $_LIST->{$pkg} ) ? $_LIST->{$pkg}->len() : 0;
+   ( defined $_LIST->{$pkg} ) ? $_LIST->{$pkg}->len() : 0;
 }
 
 sub pid {
@@ -570,7 +570,7 @@ sub wait_all {
    my $pkg = "$$.$_tid.".caller();
 
    return wantarray ? () : 0
-      if ( !exists $_LIST->{$pkg} || !$_LIST->{$pkg}->len() );
+      if ( !defined $_LIST->{$pkg} || !$_LIST->{$pkg}->len() );
 
    local $_; ( wantarray )
       ? map { $_->join(); $_ } $_LIST->{$pkg}->vals()
@@ -584,7 +584,7 @@ sub wait_one {
    my $pkg = "$$.$_tid.".caller();
 
    return undef
-      if ( !exists $_LIST->{$pkg} || !$_LIST->{$pkg}->len() );
+      if ( !defined $_LIST->{$pkg} || !$_LIST->{$pkg}->len() );
 
    _wait_one($pkg);
 }
@@ -698,11 +698,12 @@ sub _exit {
    $SIG{__WARN__} = sub {};
 
    threads->exit($exit_status) if ( $INC{'threads.pm'} && $_is_MSWin32 );
+   CORE::kill('KILL', $$) if ( $_SELF->{SIGNALED} && !$_is_MSWin32 );
 
    my $posix_exit = ( exists $_SELF->{posix_exit} )
       ? $_SELF->{posix_exit} : $_MNGD->{ $_SELF->{PKG} }{posix_exit};
 
-   if ( $posix_exit && !$_SELF->{SIGNALED} && !$_is_MSWin32 ) {
+   if ( $posix_exit && !$_is_MSWin32 ) {
       eval { MCE::Mutex::Channel::_destroy() };
       POSIX::_exit($exit_status) if $INC{'POSIX.pm'};
       CORE::kill('KILL', $$);
@@ -713,7 +714,7 @@ sub _exit {
 
 sub _force_reap {
    my ( $count, $pkg ) = ( 0, @_ );
-   return unless ( exists $_LIST->{$pkg} && $_LIST->{$pkg}->len() );
+   return unless ( defined $_LIST->{$pkg} && $_LIST->{$pkg}->len() );
 
    for my $child ( $_LIST->{$pkg}->vals() ) {
       next if $child->{IGNORE};
@@ -752,7 +753,7 @@ sub _quit {
 
 sub _reap_child {
    my ( $child, $wait_flag ) = @_;
-   return unless $child;
+   return if ( !$child || !defined $child->{PKG} );
 
    local @_ = $_DATA->{ $child->{PKG} }->get($child->{WRK_ID}, $wait_flag);
 
@@ -1022,7 +1023,7 @@ MCE::Child - A threads-like parallelization module compatible with Perl 5.8
 
 =head1 VERSION
 
-This document describes MCE::Child version 1.897
+This document describes MCE::Child version 1.900
 
 =head1 SYNOPSIS
 
