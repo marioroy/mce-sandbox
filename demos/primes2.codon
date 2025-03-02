@@ -345,10 +345,10 @@ def practicalsieve(start: u64, stop: u64, print_flag: int) -> None:
         j = 0; ij = 0;
 
         if stop < int(1e12):
-          # sieving begins with 19 (i = 6)
+            # sieving begins with 19 (i = 6)
             c = 96; k = 2; t = 34
         else:
-          # sieving begins with 23 (i = 7)
+            # sieving begins with 23 (i = 7)
             c = 120; k = 1; t = 38
 
         for i in range((6 if stop < int(1e12) else 7), q + 1):
