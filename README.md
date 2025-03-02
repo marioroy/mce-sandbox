@@ -126,7 +126,8 @@ quickly fill your disk. A suggestion is specifying a range instead.
 
        --maxworkers=<val>   specify the number of workers (default 100%)
        --threads=<val>      alias for --maxworkers
-       --usethreads         spawn workers via threads if available (not fork)
+       --spawnthreads       spawn workers via threads if available (not fork)
+       --procbind           bind to CPU round-robin (Linux, fork only)
        --help,  -h          display this help and exit
        --print, -p          print primes (ignored if sum is specified)
        --quiet, -q          suppress progress including extra output

@@ -88,7 +88,8 @@ DESCRIPTION
 
    --maxworkers=<val>   specify the number of workers (default 100%)
    --threads=<val>      alias for --maxworkers
-   --usethreads         spawn workers via threads if available (not fork)
+   --spawnthreads       spawn workers via threads if available (not fork)
+   --procbind           bind to CPU round-robin (Linux, fork only)
    --help,  -h          display this help and exit
    --print, -p          print primes (ignored if sum is specified)
    --quiet, -q          suppress progress including extra output
@@ -120,10 +121,12 @@ EXIT STATUS
 ###############################################################################
 
 my ($print_flag, $quiet_flag, $sum_flag, $run_mode) = (0, 0, 0, MODE_COUNT);
+my $ncpu = ($^O eq 'linux') ? qx(nproc) : MCE::Util::get_ncpu(); chomp $ncpu;
 
-my $max_workers = '100%';
-my $max_number  = 18446744073709551609;   ## 2^64-1-6
-my $use_threads;
+my $max_workers   = $ncpu;
+my $max_number    = 18446744073709551609;   ## 2^64-1-6
+my $spawn_threads = 0;
+my $proc_bind     = 0;
 
 {
    no warnings;
@@ -131,15 +134,16 @@ my $use_threads;
 
    my $result = GetOptions(
       'maxworkers|max-workers|threads=s' => \$max_workers,
-      'usethreads|use-threads' => \$use_threads,
+      'spawnthreads|spawn-threads' => \$spawn_threads,
+      'procbind|proc-bind' => \$proc_bind,
       'h|help'  => \$help_flag,
       'p|print' => \$print_flag,
       'q|quiet' => \$quiet_flag,
       's|sum'   => \$sum_flag
    );
 
-   $use_threads = 0
-      if $use_threads and not $threads_loaded;
+   $spawn_threads = 0
+      if $spawn_threads and not $threads_loaded;
 
    usage() if not $result;
    usage() if $help_flag;
@@ -181,7 +185,6 @@ my $N = $N_arg + 0;
 ##
 ###############################################################################
 
-my $ncpu = MCE::Util->get_ncpu();
 my $step_size;
 
 #if (($F <= 2 || $N < 1e+15) && $run_mode == MODE_COUNT) {
@@ -207,13 +210,13 @@ my $mce = MCE->new(
    gather      => Sandbox::o_iter($F, $N, $quiet_flag, $run_mode),
    input_data  => Sandbox::i_iter($F, $N, $step_size),
    max_workers => (($F == $N) ? 1 : $max_workers),
-   use_threads => $use_threads,
+   use_threads => $spawn_threads,
    init_relay  => 1,
 
    user_begin => sub {
       my ($mce, $task_id, $task_name) = @_;
       set_cpu_affinity($$, ($mce->task_wid() - 1) % $ncpu)
-         if ($mce->max_workers > 2 && !$use_threads);
+         if (!$spawn_threads && $proc_bind);
    },
 
    user_func => sub {
