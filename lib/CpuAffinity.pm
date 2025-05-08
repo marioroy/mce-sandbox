@@ -9,7 +9,9 @@ package CpuAffinity;
 use strict;
 use warnings;
 
-our $VERSION = '1.003'; $VERSION = eval $VERSION;
+our $VERSION = '1.004'; $VERSION = eval $VERSION;
+
+my %real_cpus;
 
 BEGIN {
    use Exporter();
@@ -20,6 +22,26 @@ BEGIN {
    @CpuAffinity::EXPORT    = qw(
       get_cpu_affinity set_cpu_affinity
    );
+
+   if ($^O eq 'linux') {
+      %real_cpus = map { chomp $_; $_ => 1 } qx(
+      lscpu -e='cpu,socket,cache,online' |\
+      awk '
+         \$1 ~ /[0-9]/ && \$4 == "yes" {
+            cpu = \$1; socket = \$2; cache = \$3
+            # exclude sibling CPUs
+            if (!(socket ":" cache in tmp)) {
+               out[cpu] = cpu
+               tmp[socket ":" cache] = 1
+            }
+         }
+         END {
+            for (key in out) {
+               print out[key]
+            }
+         }
+      ' | sort -n );
+   }
 }
 
 ## Retrieve a process's CPU affinity.
@@ -54,26 +76,46 @@ sub set_cpu_affinity {
    $cpu_list =~ s/\s\s*//g;
    if ($cpu_list =~ /^\d+$/) {
       my $current = get_cpu_affinity($pid);
+      my $current2 = $current;
       my @cpus;
 
-      # Populate an array the process CPU affinity.
+      # Append array the process real-CPUs affinity.
       while (length $current) {
          if ($current =~ /^,/) {
             substr $current, 0, 1, '';
          }
          elsif ($current =~ /^(\d+)-(\d+)/) {
-            push @cpus, $_ for $1..$2;
+            for ($1..$2) {
+               push @cpus, $_ if (exists $real_cpus{"$_"});
+            }
             substr $current, 0, length("$1-$2"), '';
          }
          elsif ($current =~ /^(\d+)/) {
-            push @cpus, $1;
+            push @cpus, $1 if (exists $real_cpus{"$_"});
             substr $current, 0, length("$1"), '';
+         }
+      }
+
+      # Append array the process sibling-CPUs affinity.
+      while (length $current2) {
+         if ($current2 =~ /^,/) {
+            substr $current2, 0, 1, '';
+         }
+         elsif ($current2 =~ /^(\d+)-(\d+)/) {
+            for ($1..$2) {
+               push @cpus, $_ unless (exists $real_cpus{"$_"});
+            }
+            substr $current2, 0, length("$1-$2"), '';
+         }
+         elsif ($current2 =~ /^(\d+)/) {
+            push @cpus, $1 unless (exists $real_cpus{"$_"});
+            substr $current2, 0, length("$1"), '';
          }
       }
 
       # Round-robin using the process CPU affinity.
       if (@cpus) {
-          $cpu_list = $cpus[ $cpu_list % @cpus ];
+         $cpu_list = $cpus[ $cpu_list % @cpus ];
       }
    }
 
@@ -101,7 +143,7 @@ CpuAffinity - Helper functions around taskset under Linux
 
 =head1 VERSION
 
-This document describes CpuAffinity version 1.003
+This document describes CpuAffinity version 1.004
 
 =head1 SYNOPSIS
 
