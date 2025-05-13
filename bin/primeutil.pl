@@ -193,7 +193,7 @@ my $step_size;
 #   $step_size = $N - $F + 1, $max_workers = 1;
 #}
 #else {
-   $step_size = 9609600 * ($run_mode == MODE_PRINT ? 1 : 11) * do {
+   $step_size = 9609600 * ($run_mode == MODE_PRINT ? 1 : 37) * do {
       if    ($N >= 1e+19) { 8; }
       elsif ($N >= 1e+18) { 7; }
       elsif ($N >= 1e+17) { 6; }

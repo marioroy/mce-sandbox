@@ -205,7 +205,7 @@ use Inline 'C' => "${base_dir}/src/primesieve.c";
 ##
 ###############################################################################
 
-my $step_size = 9609600 * ($run_mode == MODE_PRINT ? 1 : 19) * do {
+my $step_size = 9609600 * ($run_mode == MODE_PRINT ? 1 : 37) * do {
    if    ($N >= 1e+19) { 8; }
    elsif ($N >= 1e+18) { 7; }
    elsif ($N >= 1e+17) { 6; }
