@@ -75,7 +75,7 @@ For example, on Ubuntu Linux:
     sudo apt install libprimesieve-dev
 
 Refer to primesieve's [home page](https://github.com/kimwalisch/primesieve).
-Change the base path in `primesieve.pl` (lines 187 and 188) if installing
+Change the base path in `primesieve.pl` (lines 192 and 193) if installing
 the development files elsewhere, other than `/usr` or `/usr/local`.
 
 The Math::Prime::Util demonstration requires also, Perl::Unsafe::Signals.
