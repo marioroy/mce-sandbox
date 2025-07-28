@@ -23,7 +23,7 @@ BEGIN {
    $threads_loaded = 0;
 
    for (@ARGV) {
-      if ($_ =~ /^--use-?threads/) {
+      if ($_ =~ /^--spawn-?threads/) {
          local $@; local $SIG{__DIE__} = sub { };
          eval 'use threads; use threads::shared';
          $threads_loaded = $@ ? 0 : 1;
@@ -38,6 +38,7 @@ use Getopt::Long qw(:config bundling no_ignore_case no_auto_abbrev);
 use Scalar::Util qw(looks_like_number);
 use Time::HiRes  qw(sleep time);
 use CpuAffinity;
+use POSIX ();
 
 use MCE::Signal  qw($tmp_dir -use_dev_shm);
 use MCE;
@@ -205,6 +206,8 @@ use Inline 'C' => "${base_dir}/src/algorithm3.c";
 ##
 ###############################################################################
 
+POSIX::nice(9) unless $^O eq 'MSWin32';
+
 ## Step size is a multiple of 510510 or 9699690 for the pre-sieve logic.
 ## Primes (2)(3), the app pre-sieves (5)(7)(11)(13)(17) and >= 1e12 (19).
 ## 2*3*5*7*11*13*17 = 510510 * 19 = 9699690.
@@ -238,6 +241,7 @@ my $mce = MCE->new(
    input_data  => Sandbox::i_iter($F_adj, $N, $step_size),
    max_workers => (($F == $N) ? 1 : $max_workers),
    use_threads => $spawn_threads,
+   job_delay   => 0.0015,
    init_relay  => 1,
 
    user_begin => sub {
