@@ -225,8 +225,8 @@ my $mce = MCE->new(
    input_data  => Sandbox::i_iter($F, $N, $step_size),
    max_workers => (($F == $N) ? 1 : $max_workers),
    use_threads => $spawn_threads,
-   job_delay   => 0.0015,
-   init_relay  => 1,
+   init_relay  => (($run_mode == MODE_PRINT) ? 1 : undef),
+   job_delay   => 0.001,
 
    user_begin => sub {
       my ($mce, $task_id, $task_name) = @_;
