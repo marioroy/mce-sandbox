@@ -91,7 +91,7 @@ sub set_cpu_affinity {
             substr $current, 0, length("$1-$2"), '';
          }
          elsif ($current =~ /^(\d+)/) {
-            push @cpus, $1 if (exists $real_cpus{"$_"});
+            push @cpus, $1 if (exists $real_cpus{"$1"});
             substr $current, 0, length("$1"), '';
          }
       }
@@ -108,7 +108,7 @@ sub set_cpu_affinity {
             substr $current2, 0, length("$1-$2"), '';
          }
          elsif ($current2 =~ /^(\d+)/) {
-            push @cpus, $1 unless (exists $real_cpus{"$_"});
+            push @cpus, $1 unless (exists $real_cpus{"$1"});
             substr $current2, 0, length("$1"), '';
          }
       }
