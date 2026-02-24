@@ -69,18 +69,25 @@ parallel range variants in Codon.
 ### Dependencies
 
 The `primesieve.pl` and `primeutil.pl` Perl examples have additional dependencies.
+The Math::Prime::Util demonstration requires also, Perl::Unsafe::Signals.
+This enables workers, running a long XS function, to stop immediately upon
+receiving a signal.
+
 For example, on Ubuntu Linux:
 
     sudo apt install libmath-prime-util-gmp-perl libmath-prime-util-perl
+    sudo apt install libperl-unsafe-signals-perl
     sudo apt install libprimesieve-dev
+
+On CachyOS / Arch Linux, you can try the following:
+
+    sudo pacman -S cpanminus gpm primesieve
+    sudo /usr/bin/vendor_perl/cpanm -n Math::Prime::Util
+    sudo /usr/bin/vendor_perl/cpanm -n Perl::Unsafe::Signals
 
 Refer to primesieve's [home page](https://github.com/kimwalisch/primesieve).
 Change the base path in `primesieve.pl` (lines 192 and 193) if installing
 the development files elsewhere, other than `/usr` or `/usr/local`.
-
-The Math::Prime::Util demonstration requires also, Perl::Unsafe::Signals.
-This enables workers, running a long XS function, to stop immediately
-upon receiving a signal.
 
 Using 32-bit Perl, finding prime numbers above 2^32-1 requires `bigint`.
 Uncomment the line `use bigint` in the following files. Leave commented
