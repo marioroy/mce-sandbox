@@ -186,7 +186,7 @@ my $N = $N_arg + 0;
 ##
 ###############################################################################
 
-POSIX::nice(9) unless $^O eq 'MSWin32';
+#POSIX::nice(9) unless $^O eq 'MSWin32';
 
 my $step_size;
 

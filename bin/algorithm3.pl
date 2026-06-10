@@ -206,7 +206,7 @@ use Inline 'C' => "${base_dir}/src/algorithm3.c";
 ##
 ###############################################################################
 
-POSIX::nice(9) unless $^O eq 'MSWin32';
+#POSIX::nice(9) unless $^O eq 'MSWin32';
 
 ## Step size is a multiple of 510510 or 9699690 for the pre-sieve logic.
 ## Primes (2)(3), the app pre-sieves (5)(7)(11)(13)(17) and >= 1e12 (19).

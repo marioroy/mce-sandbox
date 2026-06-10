@@ -206,7 +206,7 @@ use Inline 'C' => "${base_dir}/src/primesieve.c";
 ##
 ###############################################################################
 
-POSIX::nice(9) unless $^O eq 'MSWin32';
+#POSIX::nice(9) unless $^O eq 'MSWin32';
 
 my $step_size = 9609600 * ($run_mode == MODE_PRINT ? 1 : 37) * do {
    if    ($N >= 1e+19) { 8; }
